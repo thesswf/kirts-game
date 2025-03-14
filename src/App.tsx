@@ -27,12 +27,12 @@ const SOCKET_SERVER_URL = process.env.NODE_ENV === 'production'
   : 'http://localhost:3006';
 
 // Home component
-interface HomeProps {
+interface HomeScreenProps {
   createGame: (username: string) => void;
   joinGame: (gameId: string, username: string) => void;
 }
 
-const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
+const HomeScreen: React.FC<HomeScreenProps> = ({ createGame, joinGame }) => {
   const [username, setUsername] = useState('');
   const [gameId, setGameId] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
@@ -1031,7 +1031,7 @@ function App() {
         </Heading>
         
         {!gameState && (
-          <Home 
+          <HomeScreen 
             createGame={createGame} 
             joinGame={joinGame} 
           />
