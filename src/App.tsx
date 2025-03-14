@@ -1052,6 +1052,17 @@ function App() {
   // Check for saved session on initial load
   useEffect(() => {
     const checkSavedSession = () => {
+      // Check if the player intentionally left the game
+      const intentionallyLeft = localStorage.getItem('intentionallyLeftGame') === 'true';
+      
+      // If the player intentionally left, don't try to reconnect
+      if (intentionallyLeft) {
+        console.log('Player intentionally left the game, not attempting to reconnect');
+        localStorage.removeItem('cardGameSession');
+        localStorage.removeItem('intentionallyLeftGame');
+        return;
+      }
+      
       const savedSession = localStorage.getItem('cardGameSession');
       if (savedSession) {
         try {
@@ -1097,6 +1108,17 @@ function App() {
     // Check for saved session on connection
     const handleConnect = () => {
       console.log('Connected to server with socket ID:', socket.id);
+      
+      // Check if the player intentionally left the game
+      const intentionallyLeft = localStorage.getItem('intentionallyLeftGame') === 'true';
+      
+      // If the player intentionally left, don't try to reconnect
+      if (intentionallyLeft) {
+        console.log('Player intentionally left the game, not attempting to reconnect');
+        localStorage.removeItem('cardGameSession');
+        localStorage.removeItem('intentionallyLeftGame');
+        return;
+      }
       
       // Check if we have a saved session
       const savedSession = localStorage.getItem('cardGameSession');
@@ -1185,6 +1207,9 @@ function App() {
         message: 'Failed to reconnect to game. Please join again.',
         type: 'error'
       });
+      
+      // Clear the intentionally left flag
+      localStorage.removeItem('intentionallyLeftGame');
       
       // Don't remove the session data immediately, try one more time
       setTimeout(() => {
@@ -1352,6 +1377,9 @@ function App() {
   const handleExitToLobby = () => {
     if (gameId) {
       socket.emit('leaveGame', { gameId });
+      
+      // Set a flag in localStorage indicating the player has intentionally left the game
+      localStorage.setItem('intentionallyLeftGame', 'true');
       
       // Don't remove the session data immediately
       // Let the server handle session cleanup after timeout
