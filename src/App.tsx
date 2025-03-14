@@ -29,7 +29,6 @@ import Home from './components/Home';
 import PlayerList from './components/PlayerList';
 import { GameState, Card as CardType, Pile as PileType, Player as PlayerType } from './types';
 import Confetti from 'react-confetti';
-import { useWindowSize } from 'react-use';
 
 // Extend the base interfaces with additional properties needed for our app
 interface ExtendedPile extends PileType {
@@ -1034,9 +1033,25 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showDeathAnimation, setShowDeathAnimation] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const { width, height } = useWindowSize();
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
   const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
+
+  // Track window dimensions for Confetti
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Initialize socket connection
   const socket = useMemo(() => {
@@ -1288,7 +1303,7 @@ function App() {
 
   return (
     <Container maxW="container.lg" centerContent py={4}>
-      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />}
+      {showConfetti && <Confetti width={windowDimensions.width} height={windowDimensions.height} recycle={false} numberOfPieces={500} />}
       
       <Flex w="100%" justifyContent="space-between" alignItems="center" mb={4}>
         <Heading as="h1" size="xl" color={useColorModeValue('blue.600', 'blue.300')}>
