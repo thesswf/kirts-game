@@ -742,6 +742,9 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
       ) : (
         <>
           <Heading size="lg" color="red.500" fontSize="4xl" textAlign="center">LOSER! LOCK IN!</Heading>
+          <Text textAlign="center" fontSize="lg" fontWeight="bold">
+            Remaining Cards: {gameState.remainingCards}
+          </Text>
         </>
       )}
       
