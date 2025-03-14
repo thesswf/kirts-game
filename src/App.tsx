@@ -29,7 +29,7 @@ import Home from './components/Home';
 import PlayerList from './components/PlayerList';
 import { GameState, Card as CardType, Pile as PileType, Player as PlayerType } from './types';
 import Confetti from 'react-confetti';
-import useWindowSize from 'react-use/lib/useWindowSize';
+import { useWindowSize } from 'react-use';
 
 // Extend the base interfaces with additional properties needed for our app
 interface ExtendedPile extends PileType {
