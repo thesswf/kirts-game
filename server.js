@@ -186,6 +186,15 @@ io.on('connection', (socket) => {
       // Add the player back to the game
       games[gameId].players.push(updatedPlayer);
       
+      // Special handling for solo games - make sure the player is host
+      if (games[gameId].players.length === 1) {
+        console.log(`Solo game detected for ${username}, ensuring player is host`);
+        games[gameId].players[0].isHost = true;
+        
+        // Make sure the current player index is 0
+        games[gameId].currentPlayerIndex = 0;
+      }
+      
       // Join the game room
       socket.join(gameId);
       
@@ -200,7 +209,7 @@ io.on('connection', (socket) => {
       // Make sure to send the full game state
       socket.emit('updateGame', games[gameId]);
       
-      // Notify other players about the reconnection
+      // Notify other players about the reconnection (not needed for solo games but kept for consistency)
       socket.to(gameId).emit('playerReconnected', { 
         playerId: socket.id,
         username: player.username
@@ -226,6 +235,22 @@ io.on('connection', (socket) => {
       
       for (const gid in games) {
         const game = games[gid];
+        
+        // Check if this is an empty game (solo player who disconnected)
+        if (game.players.length === 0) {
+          // Check if this game was created by this player
+          const sessionKeys = Object.keys(playerSessions);
+          for (const sid of sessionKeys) {
+            if (playerSessions[sid].gameId === gid && playerSessions[sid].username === username) {
+              foundGame = game;
+              foundGameId = gid;
+              break;
+            }
+          }
+          if (foundGame) break;
+        }
+        
+        // Otherwise check for player with same name
         const playerWithSameName = game.players.find(p => p.username === username);
         if (playerWithSameName) {
           foundGame = game;
@@ -247,14 +272,22 @@ io.on('connection', (socket) => {
         };
         
         // Add player back to the game
-        foundGame.players.push({
+        const newPlayer = {
           id: socket.id,
           username,
-          isHost: false, // Don't make them host
+          isHost: foundGame.players.length === 0, // Make them host if they're the only player
           correctPredictions: 0,
           totalPredictions: 0,
           sessionId: newSessionId
-        });
+        };
+        
+        foundGame.players.push(newPlayer);
+        
+        // If this is a solo game, make sure the current player index is 0
+        if (foundGame.players.length === 1) {
+          console.log(`Solo game detected for ${username}, ensuring player is host and current player`);
+          foundGame.currentPlayerIndex = 0;
+        }
         
         // Join the game room
         socket.join(foundGameId);
@@ -528,6 +561,12 @@ io.on('connection', (socket) => {
                 delete playerSessions[sid];
               }
             });
+            
+            // If this was a solo game and the game still exists but has no players, remove it
+            if (games[gameId] && games[gameId].players.length === 0) {
+              console.log(`Removing empty game ${gameId} after session timeout`);
+              delete games[gameId];
+            }
           }
         }, DISCONNECTED_PLAYER_TIMEOUT); // Use the longer timeout
       }
@@ -535,10 +574,24 @@ io.on('connection', (socket) => {
       // Remove the player from the game immediately
       game.players.splice(playerIndex, 1);
       
-      // If no players left, remove the game
+      // If no players left, don't remove the game immediately
+      // Instead, keep it around for a while to allow for reconnection
       if (game.players.length === 0) {
-        console.log(`No players left in game ${gameId}, removing game`);
-        delete games[gameId];
+        console.log(`No players left in game ${gameId}, but keeping it for potential reconnection`);
+        
+        // Set a timeout to remove the game if no one reconnects
+        setTimeout(() => {
+          // Check if the game still exists and still has no players
+          if (games[gameId] && games[gameId].players.length === 0) {
+            console.log(`No players reconnected to game ${gameId}, removing it`);
+            delete games[gameId];
+          }
+        }, DISCONNECTED_PLAYER_TIMEOUT);
+        
+        // Leave the socket room
+        socket.leave(gameId);
+        
+        // Return early since there's nothing else to update
         return;
       }
       
@@ -617,6 +670,12 @@ io.on('connection', (socket) => {
                   delete playerSessions[sid];
                 }
               });
+              
+              // If this was a solo game and the game still exists but has no players, remove it
+              if (games[gameId] && games[gameId].players.length === 0) {
+                console.log(`Removing empty game ${gameId} after session timeout`);
+                delete games[gameId];
+              }
             }
           }, DISCONNECTED_PLAYER_TIMEOUT); // Use the longer timeout
         }
@@ -624,11 +683,22 @@ io.on('connection', (socket) => {
         // Remove the player from the game immediately
         game.players.splice(playerIndex, 1);
         
-        // If no players left, remove the game
+        // If no players left, don't remove the game immediately
+        // Instead, keep it around for a while to allow for reconnection
         if (game.players.length === 0) {
-          console.log(`No players left in game ${gameId}, removing game`);
-          delete games[gameId];
-          return;
+          console.log(`No players left in game ${gameId}, but keeping it for potential reconnection`);
+          
+          // Set a timeout to remove the game if no one reconnects
+          setTimeout(() => {
+            // Check if the game still exists and still has no players
+            if (games[gameId] && games[gameId].players.length === 0) {
+              console.log(`No players reconnected to game ${gameId}, removing it`);
+              delete games[gameId];
+            }
+          }, DISCONNECTED_PLAYER_TIMEOUT);
+          
+          // Continue to the next game since there's nothing else to update
+          continue;
         }
         
         // If the host left, assign a new host
