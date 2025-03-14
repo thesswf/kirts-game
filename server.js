@@ -153,9 +153,16 @@ io.on('connection', (socket) => {
     
     // Set remaining cards to 43 (52 total cards - 9 initial pile cards)
     game.remainingCards = 43;
+    console.log(`Game ${gameId} started with ${game.remainingCards} remaining cards`);
     
     // Randomly select the first player
     game.currentPlayerIndex = Math.floor(Math.random() * game.players.length);
+    
+    // Reset player prediction stats when starting a new game
+    game.players.forEach(player => {
+      player.correctPredictions = 0;
+      player.totalPredictions = 0;
+    });
     
     io.to(gameId).emit('updateGame', game);
     io.to(gameId).emit('gameStarted', game);
@@ -323,6 +330,8 @@ io.on('connection', (socket) => {
     game.currentPileIndex = null;
     game.remainingCards = 43;
     game.firstTurnAfterPileDeath = true;
+    
+    console.log(`Game ${gameId} ended and reset with ${game.remainingCards} remaining cards`);
     
     io.to(gameId).emit('gameEnded');
     io.to(gameId).emit('updateGame', game);
