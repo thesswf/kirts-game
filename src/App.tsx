@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Box, 
   Button, 
@@ -23,6 +23,16 @@ import Home from './components/Home';
 import PlayerList from './components/PlayerList';
 import { GameState, Card as CardType, Pile, Player, Prediction } from './types';
 import Confetti from 'react-confetti';
+
+// Extend the base interfaces with additional properties needed for our app
+interface ExtendedPile extends Pile {
+  isDead?: boolean; // Add this property to fix linter error
+}
+
+interface ExtendedGameState extends GameState {
+  winner?: Player; // Add this optional property to fix linter error
+  piles: ExtendedPile[]; // Override piles with our extended version
+}
 
 // Connect to the Socket.io server
 const SOCKET_SERVER_URL = process.env.NODE_ENV === 'production' 
@@ -205,7 +215,7 @@ const Card: React.FC<CardProps> = ({
     // For face cards (J, Q, K) and Ace, show a single large symbol
     if (['J', 'Q', 'K', 'A'].includes(value)) {
       return (
-        <Text fontSize="2xl" color={cardColor}>
+        <Text fontSize="xl" color={cardColor}>
           {value === 'A' ? suitSymbol : value}
         </Text>
       );
@@ -214,114 +224,103 @@ const Card: React.FC<CardProps> = ({
     // For number cards, show the appropriate number of suit symbols
     const count = value === '10' ? 10 : parseInt(value);
     
-    // Different layouts based on the number of symbols
-    if (count <= 4) {
-      // Simple grid for 2, 3, 4
-      return (
-        <Grid 
-          templateColumns="repeat(2, 1fr)" 
-          gap={0}
-          width="100%"
-          height="100%"
-          padding={1}
-        >
-          {Array.from({ length: count }).map((_, i) => (
-            <Flex 
-              key={i} 
-              justifyContent="center" 
-              alignItems="center"
-              visibility={
-                // For 3, hide the bottom-left symbol
-                count === 3 && i === 2 ? 'hidden' : 'visible'
-              }
-            >
-              <Text color={cardColor} fontSize="xs">
-                {suitSymbol}
-              </Text>
-            </Flex>
-          ))}
-        </Grid>
-      );
-    } else if (count <= 6) {
-      // 2x3 grid for 5, 6
-      return (
-        <Grid 
-          templateColumns="repeat(2, 1fr)" 
-          templateRows="repeat(3, 1fr)"
-          gap={0}
-          width="100%"
-          height="100%"
-          padding={1}
-        >
-          {Array.from({ length: count }).map((_, i) => (
-            <Flex 
-              key={i} 
-              justifyContent="center" 
-              alignItems="center"
-              visibility={
-                // For 5, hide the middle symbol
-                count === 5 && i === 2 ? 'hidden' : 'visible'
-              }
-            >
-              <Text color={cardColor} fontSize="xs">
-                {suitSymbol}
-              </Text>
-            </Flex>
-          ))}
-        </Grid>
-      );
-    } else {
-      // 3x3 grid for 7, 8, 9, 10
-      return (
-        <Grid 
-          templateColumns="repeat(3, 1fr)" 
-          templateRows="repeat(3, 1fr)"
-          gap={0}
-          width="100%"
-          height="100%"
-          padding={0}
-        >
-          {Array.from({ length: 9 }).map((_, i) => {
-            // Special layouts for 7, 8, 9
-            const showSymbol = 
-              count === 7 ? (i !== 3 && i !== 5) : // 7: hide middle symbols
-              count === 8 ? (i !== 4) : // 8: hide center
-              count === 9 ? true : // 9: show all
-              count === 10 ? true : // 10: show all (with extra in middle)
-              false;
-              
-            return (
-              <Flex 
-                key={i} 
-                justifyContent="center" 
-                alignItems="center"
-                visibility={showSymbol ? 'visible' : 'hidden'}
-              >
-                <Text color={cardColor} fontSize="2xs">
-                  {suitSymbol}
-                </Text>
-              </Flex>
-            );
-          })}
+    // Use a more compact layout with traditional playing card arrangements
+    return (
+      <Box position="relative" width="100%" height="100%">
+        {/* Render suit symbols based on card value */}
+        {Array.from({ length: count }).map((_, i) => {
+          // Calculate positions based on traditional playing card layouts
+          let top, left;
           
-          {/* Extra symbol in the middle for 10 */}
-          {count === 10 && (
-            <Flex 
+          switch (count) {
+            case 2:
+              // Two symbols: top and bottom
+              top = i === 0 ? '15%' : '75%';
+              left = '50%';
+              break;
+            case 3:
+              // Three symbols: top, middle, bottom
+              top = i === 0 ? '15%' : i === 1 ? '50%' : '75%';
+              left = '50%';
+              break;
+            case 4:
+              // Four symbols: corners
+              top = i < 2 ? '15%' : '75%';
+              left = i % 2 === 0 ? '30%' : '70%';
+              break;
+            case 5:
+              // Five symbols: corners + center
+              if (i === 4) {
+                top = '50%';
+                left = '50%';
+              } else {
+                top = i < 2 ? '15%' : '75%';
+                left = i % 2 === 0 ? '30%' : '70%';
+              }
+              break;
+            case 6:
+              // Six symbols: 2 columns of 3
+              top = i < 2 ? '15%' : i < 4 ? '50%' : '75%';
+              left = i % 2 === 0 ? '30%' : '70%';
+              break;
+            case 7:
+              // Seven symbols: 2 columns of 3 + 1 in middle
+              if (i === 6) {
+                top = '50%';
+                left = '50%';
+              } else {
+                top = i < 2 ? '15%' : i < 4 ? '40%' : '65%';
+                left = i % 2 === 0 ? '30%' : '70%';
+              }
+              break;
+            case 8:
+              // Eight symbols: 2 columns of 4
+              top = i < 2 ? '15%' : i < 4 ? '38%' : i < 6 ? '62%' : '85%';
+              left = i % 2 === 0 ? '30%' : '70%';
+              break;
+            case 9:
+              // Nine symbols: 3 columns of 3
+              top = i < 3 ? '15%' : i < 6 ? '50%' : '85%';
+              left = i % 3 === 0 ? '25%' : i % 3 === 1 ? '50%' : '75%';
+              break;
+            case 10:
+              // Ten symbols: 3 columns of 4 (with middle row offset)
+              if (i < 4) {
+                // Top row
+                top = '15%';
+                left = i === 0 ? '25%' : i === 1 ? '50%' : i === 2 ? '75%' : '50%';
+              } else if (i < 8) {
+                // Middle rows (offset)
+                top = i < 6 ? '38%' : '62%';
+                left = i % 2 === 0 ? '30%' : '70%';
+              } else {
+                // Bottom row
+                top = '85%';
+                left = i === 8 ? '25%' : '75%';
+              }
+              break;
+            default:
+              top = '50%';
+              left = '50%';
+          }
+          
+          return (
+            <Box
+              key={i}
               position="absolute"
-              top="50%"
-              left="50%"
+              top={top}
+              left={left}
               transform="translate(-50%, -50%)"
-              justifyContent="center" 
-              alignItems="center"
+              fontSize={count > 7 ? '2xs' : 'xs'}
             >
-              <Text color={cardColor} fontSize="xs">
+              <Text color={cardColor}>
                 {suitSymbol}
               </Text>
-            </Flex>
-          )}
-        </Grid>
-      );
-    }
+            </Box>
+          );
+        })}
+      </Box>
+    );
   };
   
   // Determine animation class based on prediction result or revival
@@ -636,7 +635,7 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
 
 // Game room component
 interface GameRoomSectionProps {
-  gameState: GameState;
+  gameState: ExtendedGameState;
   playerId: string | null;
   username: string;
   isMyTurn: boolean;
@@ -980,7 +979,7 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
 
 function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [gameState, setGameState] = useState<ExtendedGameState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
   const [gameId, setGameId] = useState<string | null>(null);
@@ -989,233 +988,137 @@ function App() {
   const [showGameLost, setShowGameLost] = useState(false);
   const [windowDimensions, setWindowDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const toast = useToast();
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [notification, setNotification] = useState<string>('');
+  const [showDeathAnimation, setShowDeathAnimation] = useState<boolean>(false);
 
   // Initialize socket connection
   useEffect(() => {
-    const newSocket = io(SOCKET_SERVER_URL);
+    // Connect to the server
+    const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:3001');
     setSocket(newSocket);
 
-    // Clean up on unmount
+    // Check for saved session in localStorage
+    const savedSession = localStorage.getItem('cardGameSession');
+    if (savedSession) {
+      try {
+        const session = JSON.parse(savedSession);
+        if (session.username && session.gameId && session.sessionId) {
+          console.log('Found saved session, attempting to reconnect...');
+          setUsername(session.username);
+          setGameId(session.gameId);
+          setSessionId(session.sessionId);
+          
+          // We'll attempt reconnection after socket is connected
+        }
+      } catch (error) {
+        console.error('Error parsing saved session:', error);
+        localStorage.removeItem('cardGameSession');
+      }
+    }
+
+    // Socket event listeners
+    newSocket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    newSocket.on('error', (message: string) => {
+      setErrorMessage(message);
+      setTimeout(() => setErrorMessage(''), 5000);
+    });
+
+    newSocket.on('gameCreated', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+      setGameId(gameId);
+      setPlayerId(playerId);
+      setSessionId(sessionId);
+      
+      // Save session to localStorage
+      saveSessionToLocalStorage(username, gameId, sessionId);
+    });
+
+    newSocket.on('gameJoined', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+      setGameId(gameId);
+      setPlayerId(playerId);
+      setSessionId(sessionId);
+      
+      // Save session to localStorage
+      saveSessionToLocalStorage(username, gameId, sessionId);
+    });
+
+    newSocket.on('updateGame', (updatedGameState: ExtendedGameState) => {
+      setGameState(updatedGameState);
+      
+      // Check if all piles are dead
+      const allPilesDead = updatedGameState.piles.length > 0 && 
+        updatedGameState.piles.every(pile => pile.isDead);
+      
+      if (allPilesDead && !showDeathAnimation) {
+        setShowDeathAnimation(true);
+        setTimeout(() => setShowDeathAnimation(false), 2000);
+      }
+      
+      // Check if game is won
+      if (updatedGameState.status === 'finished' && updatedGameState.winner) {
+        setShowConfetti(true);
+      }
+    });
+
+    newSocket.on('playerJoined', ({ username }: { username: string }) => {
+      setNotification(`${username} joined the game`);
+      setTimeout(() => setNotification(''), 3000);
+    });
+
+    newSocket.on('playerLeft', ({ username }: { username: string }) => {
+      setNotification(`${username} left the game`);
+      setTimeout(() => setNotification(''), 3000);
+    });
+
+    newSocket.on('playerDisconnected', ({ username }: { username: string }) => {
+      setNotification(`${username} disconnected`);
+      setTimeout(() => setNotification(''), 3000);
+    });
+
+    newSocket.on('playerReconnected', ({ username }: { username: string }) => {
+      setNotification(`${username} reconnected`);
+      setTimeout(() => setNotification(''), 3000);
+    });
+
+    newSocket.on('reconnectFailed', () => {
+      setErrorMessage('Failed to reconnect to game. Starting a new session.');
+      setTimeout(() => setErrorMessage(''), 5000);
+      
+      // Clear saved session
+      localStorage.removeItem('cardGameSession');
+      setSessionId('');
+      setGameId('');
+      setGameState(null);
+    });
+
     return () => {
       newSocket.disconnect();
     };
   }, []);
 
-  // Try to reconnect on app load
+  // Attempt reconnection if we have session data
   useEffect(() => {
-    if (!socket) return;
-
-    // Check if we have session data in localStorage
-    const savedSessionId = localStorage.getItem('sessionId');
-    const savedUsername = localStorage.getItem('username');
-    const savedGameId = localStorage.getItem('gameId');
-    
-    if (savedSessionId && savedUsername && savedGameId) {
-      // Set the saved values immediately to prevent flashing the home screen
-      setUsername(savedUsername);
-      setSessionId(savedSessionId);
-      setGameId(savedGameId);
-      
-      // Show a loading toast
-      toast({
-        title: "Reconnecting...",
-        description: "Attempting to reconnect to your game",
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-        position: "top"
-      });
-      
-      // Attempt to reconnect with the saved session
-      socket.emit('reconnect', { 
-        sessionId: savedSessionId, 
-        username: savedUsername 
-      });
+    if (socket && socket.connected && username && gameId && sessionId && !gameState) {
+      console.log('Attempting to reconnect with session:', { username, sessionId });
+      socket.emit('reconnect', { username, sessionId });
     }
-  }, [socket, toast]);
+  }, [socket, username, gameId, sessionId, gameState]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight
-      });
-    };
+  // Save session data to localStorage
+  const saveSessionToLocalStorage = (username: string, gameId: string, sessionId: string) => {
+    localStorage.setItem('cardGameSession', JSON.stringify({ username, gameId, sessionId }));
+  };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Set up socket event listeners
-  useEffect(() => {
-    if (!socket) return;
-
-    // Game state updates
-    socket.on('updateGame', (updatedGame: GameState) => {
-      setGameState(updatedGame);
-    });
-
-    // Game created event
-    socket.on('gameCreated', ({ gameId, playerId, sessionId }) => {
-      setGameId(gameId);
-      setPlayerId(playerId);
-      setSessionId(sessionId);
-      
-      // Save session info to localStorage
-      localStorage.setItem('sessionId', sessionId);
-      localStorage.setItem('username', username);
-      localStorage.setItem('gameId', gameId);
-    });
-
-    // Game joined event
-    socket.on('gameJoined', ({ gameId, playerId, sessionId }) => {
-      setGameId(gameId);
-      setPlayerId(playerId);
-      setSessionId(sessionId);
-      
-      // Save session info to localStorage
-      localStorage.setItem('sessionId', sessionId);
-      localStorage.setItem('username', username);
-      localStorage.setItem('gameId', gameId);
-    });
-
-    // Player joined event
-    socket.on('playerJoined', ({ playerId, username: joinedUsername }) => {
-      toast({
-        title: "Player joined",
-        description: `${joinedUsername} has joined the game.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-        position: "top"
-      });
-    });
-
-    // Player disconnected event
-    socket.on('playerDisconnected', ({ playerId, username: disconnectedUsername }) => {
-      toast({
-        title: "Player disconnected",
-        description: `${disconnectedUsername} has disconnected. They can rejoin within 5 minutes.`,
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-        position: "top"
-      });
-    });
-
-    // Player left event (after timeout)
-    socket.on('playerLeft', ({ playerId, username: leftUsername }) => {
-      toast({
-        title: "Player left",
-        description: leftUsername ? `${leftUsername} has left the game.` : "A player has left the game.",
-        status: "info",
-        duration: 5000,
-        isClosable: true,
-        position: "top"
-      });
-    });
-
-    // Reconnection failed event
-    socket.on('reconnectFailed', () => {
-      // Clear localStorage if reconnection failed
-      localStorage.removeItem('sessionId');
-      localStorage.removeItem('username');
-      localStorage.removeItem('gameId');
-      
-      toast({
-        title: "Reconnection failed",
-        description: "Your session has expired. Please join a new game.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "top"
-      });
-    });
-
-    // Pile revived event
-    socket.on('pileRevived', ({ pileIndex }) => {
-      // Show a notification or animation when a pile is revived
-      if (gameState && gameState.piles[pileIndex]) {
-        // Create a temporary copy of the game state
-        const updatedGameState = { ...gameState };
-        
-        // Add a special flag to the revived pile to trigger animation
-        updatedGameState.piles[pileIndex] = {
-          ...updatedGameState.piles[pileIndex],
-          isRevived: true
-        };
-        
-        // Update the game state to show the revival animation
-        setGameState(updatedGameState);
-        
-        // Remove the revival flag after animation completes
-        setTimeout(() => {
-          if (gameState) {
-            const resetGameState = { ...gameState };
-            if (resetGameState.piles[pileIndex]) {
-              resetGameState.piles[pileIndex].isRevived = false;
-              setGameState(resetGameState);
-            }
-          }
-        }, 2500); // 2.5 seconds for animation
-      }
-    });
-
-    socket.on('gameOver', (data) => {
-      setGameState(data.gameState);
-      
-      // Check if game was won (no more cards) or lost (all piles dead)
-      if (data.gameState.remainingCards === 0) {
-        setShowConfetti(true);
-        toast({
-          title: "CONGRATULATIONS!",
-          description: "YOU WERE LOCKED IN!",
-          status: "success",
-          duration: 5000,
-          isClosable: true,
-          position: "top"
-        });
-        
-        // Hide confetti after 8 seconds
-        setTimeout(() => {
-          setShowConfetti(false);
-        }, 8000);
-      } else if (data.gameState.piles.every((pile: Pile) => !pile.active)) {
-        setShowGameLost(true);
-        toast({
-          title: "LOSER!",
-          description: "LOCK IN!",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top"
-        });
-        
-        // Hide game lost animation after 5 seconds
-        setTimeout(() => {
-          setShowGameLost(false);
-        }, 5000);
-      }
-    });
-
-    // Error handling
-    socket.on('error', (errorMessage: string) => {
-      alert(`Error: ${errorMessage}`);
-    });
-
-    return () => {
-      socket.off('updateGame');
-      socket.off('gameCreated');
-      socket.off('gameJoined');
-      socket.off('playerJoined');
-      socket.off('playerDisconnected');
-      socket.off('playerLeft');
-      socket.off('reconnectFailed');
-      socket.off('pileRevived');
-      socket.off('gameOver');
-      socket.off('error');
-    };
-  }, [socket, gameState, toast, username]);
+  // Clear session data when exiting game
+  const clearSession = () => {
+    localStorage.removeItem('cardGameSession');
+    setSessionId('');
+    setGameId('');
+    setGameState(null);
+  };
 
   // Create a new game
   const createGame = (username: string) => {
@@ -1279,29 +1182,10 @@ function App() {
 
   // Exit to lobby
   const exitToLobby = () => {
-    // Clear game state and return to home screen
-    setGameState(null);
-    setPlayerId(null);
-    setGameId(null);
-    
-    // Clear session data from localStorage
-    localStorage.removeItem('sessionId');
-    localStorage.removeItem('username');
-    localStorage.removeItem('gameId');
-    
-    // Notify the server that the player is leaving
     if (socket && gameId) {
       socket.emit('leaveGame', { gameId });
+      clearSession();
     }
-    
-    toast({
-      title: "Exited game",
-      description: "You have returned to the lobby",
-      status: "info",
-      duration: 3000,
-      isClosable: true,
-      position: "top"
-    });
   };
 
   return (

@@ -19,15 +19,17 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  // Add ping timeout and interval settings to handle disconnections better
-  pingTimeout: 60000, // 1 minute
-  pingInterval: 25000, // 25 seconds
+  // Increase ping timeout and interval settings for better connection stability
+  pingTimeout: 120000, // 2 minutes
+  pingInterval: 20000, // 20 seconds
 });
 
 // Game state
 let games = {};
 // Player session mapping to handle reconnections
 let playerSessions = {};
+// Set a longer timeout for inactive sessions (24 hours in milliseconds)
+const SESSION_TIMEOUT = 24 * 60 * 60 * 1000;
 
 // Card values from lowest to highest
 const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -74,35 +76,66 @@ io.on('connection', (socket) => {
   
   // Check if this is a reconnection
   socket.on('reconnect', ({ username, sessionId }) => {
+    console.log(`Reconnection attempt for session ${sessionId} by ${username}`);
+    
     if (sessionId && playerSessions[sessionId]) {
       const session = playerSessions[sessionId];
       const gameId = session.gameId;
       const oldSocketId = session.socketId;
       
+      console.log(`Found session for ${username} in game ${gameId}, old socket: ${oldSocketId}`);
+      
       // Update the session with the new socket ID
       playerSessions[sessionId].socketId = socket.id;
+      playerSessions[sessionId].lastActive = Date.now();
       
       // If the game exists, update the player's socket ID
       if (games[gameId]) {
-        const playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
+        // First try to find by old socket ID
+        let playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
+        
+        // If not found by old socket ID, try to find by session ID
+        if (playerIndex === -1) {
+          playerIndex = games[gameId].players.findIndex(p => p.sessionId === sessionId);
+        }
+        
         if (playerIndex !== -1) {
+          const player = games[gameId].players[playerIndex];
+          
           // Update the player's socket ID
           games[gameId].players[playerIndex].id = socket.id;
+          
+          // If player was marked as disconnected, mark them as reconnected
+          if (player.disconnected) {
+            games[gameId].players[playerIndex].disconnected = false;
+            games[gameId].players[playerIndex].disconnectedAt = null;
+          }
           
           // Join the game room
           socket.join(gameId);
           
           // Send the updated game state to the reconnected player
-          socket.emit('gameJoined', { gameId, playerId: socket.id });
+          socket.emit('gameJoined', { gameId, playerId: socket.id, sessionId });
           socket.emit('updateGame', games[gameId]);
           
-          console.log(`Player ${username} reconnected to game ${gameId}`);
+          // Notify other players about the reconnection
+          socket.to(gameId).emit('playerReconnected', { 
+            playerId: socket.id,
+            username: player.username
+          });
+          
+          console.log(`Player ${username} successfully reconnected to game ${gameId}`);
           return;
+        } else {
+          console.log(`Player not found in game ${gameId} with session ${sessionId}`);
         }
+      } else {
+        console.log(`Game ${gameId} not found for session ${sessionId}`);
       }
     }
     
     // If reconnection failed, inform the client
+    console.log(`Reconnection failed for session ${sessionId}`);
     socket.emit('reconnectFailed');
   });
   
@@ -119,7 +152,9 @@ io.on('connection', (socket) => {
         isHost: true,
         correctPredictions: 0,
         totalPredictions: 0,
-        sessionId // Store the session ID with the player
+        sessionId, // Store the session ID with the player
+        disconnected: false,
+        disconnectedAt: null
       }],
       status: 'waiting',
       deck: [],
@@ -127,14 +162,16 @@ io.on('connection', (socket) => {
       currentPlayerIndex: 0,
       currentPileIndex: null,
       remainingCards: 43, // Track remaining cards (52 - 9 initial cards)
-      firstTurnAfterPileDeath: true // Track if it's the first turn after a pile death
+      firstTurnAfterPileDeath: true, // Track if it's the first turn after a pile death
+      createdAt: Date.now() // Track when the game was created
     };
     
     // Store the session information
     playerSessions[sessionId] = {
       socketId: socket.id,
       username,
-      gameId
+      gameId,
+      lastActive: Date.now()
     };
     
     socket.join(gameId);
@@ -166,14 +203,17 @@ io.on('connection', (socket) => {
       isHost: false,
       correctPredictions: 0,
       totalPredictions: 0,
-      sessionId // Store the session ID with the player
+      sessionId, // Store the session ID with the player
+      disconnected: false,
+      disconnectedAt: null
     });
     
     // Store the session information
     playerSessions[sessionId] = {
       socketId: socket.id,
       username,
-      gameId
+      gameId,
+      lastActive: Date.now()
     };
     
     socket.join(gameId);
@@ -476,7 +516,9 @@ io.on('connection', (socket) => {
         player.disconnected = true;
         player.disconnectedAt = Date.now();
         
-        // After a timeout (5 minutes), remove the player if they haven't reconnected
+        console.log(`Player ${player.username} disconnected from game ${gameId}, will be removed after timeout if not reconnected`);
+        
+        // After a timeout, remove the player if they haven't reconnected
         setTimeout(() => {
           // Check if the player is still in the game and still disconnected
           const currentGame = games[gameId];
@@ -492,6 +534,7 @@ io.on('connection', (socket) => {
               
               // If no players left, remove the game
               if (currentGame.players.length === 0) {
+                console.log(`No players left in game ${gameId}, removing game`);
                 delete games[gameId];
                 // Clean up any sessions associated with this game
                 for (const sid in playerSessions) {
@@ -505,6 +548,7 @@ io.on('connection', (socket) => {
               // If the host left, assign a new host
               if (!currentGame.players.some(p => p.isHost)) {
                 currentGame.players[0].isHost = true;
+                console.log(`Assigned new host in game ${gameId}: ${currentGame.players[0].username}`);
               }
               
               // If it was this player's turn, move to the next player
@@ -514,11 +558,14 @@ io.on('connection', (socket) => {
                 currentGame.currentPlayerIndex--;
               }
               
-              io.to(gameId).emit('playerLeft', { playerId: player.id });
+              io.to(gameId).emit('playerLeft', { 
+                playerId: player.id,
+                username: player.username
+              });
               io.to(gameId).emit('updateGame', currentGame);
             }
           }
-        }, 5 * 60 * 1000); // 5 minutes
+        }, SESSION_TIMEOUT); // Use a much longer timeout (24 hours)
         
         // Notify other players that this player has disconnected
         io.to(gameId).emit('playerDisconnected', { 
@@ -552,6 +599,43 @@ function generateSessionId() {
   }
   return result;
 }
+
+// Clean up inactive sessions and games periodically
+setInterval(() => {
+  const now = Date.now();
+  
+  // Clean up inactive sessions
+  for (const sessionId in playerSessions) {
+    const session = playerSessions[sessionId];
+    if (now - session.lastActive > SESSION_TIMEOUT) {
+      console.log(`Removing inactive session ${sessionId} for ${session.username}`);
+      delete playerSessions[sessionId];
+    }
+  }
+  
+  // Clean up inactive games (games with no activity for 24 hours)
+  for (const gameId in games) {
+    const game = games[gameId];
+    // Check if all players are disconnected
+    const allDisconnected = game.players.every(p => p.disconnected);
+    
+    if (allDisconnected) {
+      // Check if the game has been inactive for too long
+      const oldestDisconnect = Math.min(...game.players.map(p => p.disconnectedAt || Infinity));
+      if (now - oldestDisconnect > SESSION_TIMEOUT) {
+        console.log(`Removing inactive game ${gameId}`);
+        delete games[gameId];
+        
+        // Clean up any sessions associated with this game
+        for (const sessionId in playerSessions) {
+          if (playerSessions[sessionId].gameId === gameId) {
+            delete playerSessions[sessionId];
+          }
+        }
+      }
+    }
+  }
+}, 60 * 60 * 1000); // Run cleanup every hour
 
 // Start the server
 const PORT = process.env.PORT || 3005;
