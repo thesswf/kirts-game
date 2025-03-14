@@ -480,7 +480,7 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
 };
 
 // Game room component
-interface GameRoomProps {
+interface GameRoomSectionProps {
   gameState: GameState;
   playerId: string | null;
   username: string;
@@ -492,7 +492,7 @@ interface GameRoomProps {
   currentPlayer?: Player;
 }
 
-const GameRoom: React.FC<GameRoomProps> = ({
+const GameRoomSection: React.FC<GameRoomSectionProps> = ({
   gameState,
   playerId,
   username,
@@ -1038,7 +1038,7 @@ function App() {
         )}
         
         {gameState && (
-          <GameRoom 
+          <GameRoomSection 
             gameState={gameState}
             playerId={playerId}
             username={username}
