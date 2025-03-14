@@ -1,46 +1,109 @@
-# Getting Started with Create React App
+# High-Low Card Game
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A multiplayer card game where players predict if the next card will be higher, lower, or equal to the current card.
 
-## Available Scripts
+## Game Rules
 
-In the project directory, you can run:
+1. The game starts with a 3x3 grid of random cards face up.
+2. Players take turns selecting a pile and predicting whether the next card will be higher, lower, or equal to the top card.
+3. If the prediction is correct, the card is added to the pile and the next player takes their turn.
+4. If the prediction is incorrect, the pile is flipped over (becomes inactive) and the next player must choose a different pile.
+5. The game continues until all piles are inactive.
 
-### `npm start`
+## Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- Real-time multiplayer gameplay
+- Mobile-friendly design
+- Game lobby with shareable game codes
+- Turn-based gameplay with visual indicators
+- Card animations and visual feedback
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## Technologies Used
 
-### `npm test`
+- React with TypeScript
+- Socket.io for real-time communication
+- Chakra UI for styling
+- Express.js for the server
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Getting Started
 
-### `npm run build`
+### Prerequisites
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Node.js (v14 or higher)
+- npm or yarn
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Installation
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+1. Clone the repository
+2. Install dependencies:
 
-### `npm run eject`
+```bash
+cd card-game
+npm install
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+### Running Locally
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+To run the game locally:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```bash
+npm run dev
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+This will start both the client and server:
+- Client: http://localhost:3000
+- Server: http://localhost:3001
 
-## Learn More
+## Deployment
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Deploying to Render.com (Free Tier)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+1. Create a new account on [Render](https://render.com/) if you don't have one.
+
+2. Create a new Web Service:
+   - Connect your GitHub repository
+   - Set the build command: `npm install && npm run build`
+   - Set the start command: `node server.js`
+   - Choose the free plan
+
+3. Set environment variables:
+   - `NODE_ENV=production`
+
+4. Deploy the service
+
+### Deploying to Heroku
+
+1. Create a new account on [Heroku](https://heroku.com/) if you don't have one.
+
+2. Install the Heroku CLI and login:
+```bash
+npm install -g heroku
+heroku login
+```
+
+3. Create a new Heroku app:
+```bash
+heroku create your-card-game-name
+```
+
+4. Add a Procfile to the root directory:
+```
+web: node server.js
+```
+
+5. Deploy to Heroku:
+```bash
+git push heroku main
+```
+
+## Playing the Game
+
+1. Open the deployed URL or localhost:3000 in your browser
+2. Create a new game and share the game code with friends
+3. Wait for players to join
+4. Start the game when everyone is ready
+5. Take turns making predictions and enjoy!
+
+## License
+
+MIT
