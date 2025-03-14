@@ -734,14 +734,29 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
   // Render game over
   const renderGameOver = () => (
     <Stack direction="column" style={{ gap: '1rem' }}>
-      <Heading size="lg" color="teal.500">Game Over!</Heading>
-      <Text>
-        {gameState.remainingCards === 0 
-          ? "Congratulations! You've successfully played through all cards!" 
-          : "All piles have been completed."}
-      </Text>
+      {gameState.remainingCards === 0 ? (
+        <>
+          <Heading size="lg" color="teal.500">Game Over!</Heading>
+          <Text>Congratulations! You've successfully played through all cards!</Text>
+        </>
+      ) : (
+        <>
+          <Heading size="lg" color="red.500" fontSize="4xl" textAlign="center">LOSER! LOCK IN!</Heading>
+        </>
+      )}
+      
+      {/* Player Stats */}
+      <Box mt={4}>
+        <Heading size="md" mb={2}>Player Stats</Heading>
+        <PlayerListSection 
+          players={gameState.players} 
+          currentPlayerId={playerId}
+          currentTurnIndex={gameState.currentPlayerIndex}
+        />
+      </Box>
+      
       {isHost && (
-        <Button colorScheme="teal" onClick={startGame}>
+        <Button colorScheme="teal" onClick={startGame} mt={4}>
           Play Again
         </Button>
       )}
@@ -986,10 +1001,14 @@ function App() {
     if (!socket || !gameId) return;
     socket.emit('endGame', gameId);
     
-    // Reset local state to return to landing page
-    setGameState(null);
-    setPlayerId(null);
-    setGameId(null);
+    // Instead of resetting local state completely, just update the game status to 'waiting'
+    // This keeps the user in the game room where they can see the Start Game button
+    if (gameState) {
+      setGameState({
+        ...gameState,
+        status: 'waiting'
+      });
+    }
   };
 
   // Select a pile
