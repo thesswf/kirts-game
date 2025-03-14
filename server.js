@@ -151,8 +151,10 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (game.status !== 'waiting') {
-      socket.emit('error', 'Game already started');
+    // Allow joining games in progress
+    // Only restrict joining finished games
+    if (game.status === 'finished') {
+      socket.emit('error', 'Game has ended');
       return;
     }
     
@@ -176,6 +178,13 @@ io.on('connection', (socket) => {
     
     socket.join(gameId);
     socket.emit('gameJoined', { gameId, playerId: socket.id, sessionId });
+    
+    // Notify other players that someone has joined
+    socket.to(gameId).emit('playerJoined', { 
+      playerId: socket.id,
+      username: username
+    });
+    
     io.to(gameId).emit('updateGame', game);
   });
   
@@ -395,6 +404,59 @@ io.on('connection', (socket) => {
     
     io.to(gameId).emit('gameEnded');
     io.to(gameId).emit('updateGame', game);
+  });
+  
+  // Handle player explicitly leaving a game
+  socket.on('leaveGame', ({ gameId }) => {
+    const game = games[gameId];
+    
+    if (!game) {
+      return;
+    }
+    
+    const playerIndex = game.players.findIndex(p => p.id === socket.id);
+    
+    if (playerIndex !== -1) {
+      const player = game.players[playerIndex];
+      
+      // Remove the player from the game
+      game.players.splice(playerIndex, 1);
+      
+      // Clean up the player's session
+      Object.keys(playerSessions).forEach(sid => {
+        if (playerSessions[sid].socketId === socket.id) {
+          delete playerSessions[sid];
+        }
+      });
+      
+      // If no players left, remove the game
+      if (game.players.length === 0) {
+        delete games[gameId];
+        return;
+      }
+      
+      // If the host left, assign a new host
+      if (!game.players.some(p => p.isHost)) {
+        game.players[0].isHost = true;
+      }
+      
+      // If it was this player's turn, move to the next player
+      if (game.currentPlayerIndex === playerIndex) {
+        game.currentPlayerIndex = game.currentPlayerIndex % game.players.length;
+      } else if (game.currentPlayerIndex > playerIndex) {
+        game.currentPlayerIndex--;
+      }
+      
+      // Notify other players that this player has left
+      io.to(gameId).emit('playerLeft', { 
+        playerId: socket.id,
+        username: player.username
+      });
+      io.to(gameId).emit('updateGame', game);
+      
+      // Leave the socket room
+      socket.leave(gameId);
+    }
   });
   
   // Disconnect handling

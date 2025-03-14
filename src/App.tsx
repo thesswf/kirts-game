@@ -205,7 +205,7 @@ const Card: React.FC<CardProps> = ({
     // For face cards (J, Q, K) and Ace, show a single large symbol
     if (['J', 'Q', 'K', 'A'].includes(value)) {
       return (
-        <Text fontSize="3xl" color={cardColor}>
+        <Text fontSize="2xl" color={cardColor}>
           {value === 'A' ? suitSymbol : value}
         </Text>
       );
@@ -220,10 +220,10 @@ const Card: React.FC<CardProps> = ({
       return (
         <Grid 
           templateColumns="repeat(2, 1fr)" 
-          gap={1}
+          gap={0}
           width="100%"
           height="100%"
-          padding={2}
+          padding={1}
         >
           {Array.from({ length: count }).map((_, i) => (
             <Flex 
@@ -235,7 +235,7 @@ const Card: React.FC<CardProps> = ({
                 count === 3 && i === 2 ? 'hidden' : 'visible'
               }
             >
-              <Text color={cardColor} fontSize="sm">
+              <Text color={cardColor} fontSize="xs">
                 {suitSymbol}
               </Text>
             </Flex>
@@ -248,10 +248,10 @@ const Card: React.FC<CardProps> = ({
         <Grid 
           templateColumns="repeat(2, 1fr)" 
           templateRows="repeat(3, 1fr)"
-          gap={1}
+          gap={0}
           width="100%"
           height="100%"
-          padding={2}
+          padding={1}
         >
           {Array.from({ length: count }).map((_, i) => (
             <Flex 
@@ -263,7 +263,7 @@ const Card: React.FC<CardProps> = ({
                 count === 5 && i === 2 ? 'hidden' : 'visible'
               }
             >
-              <Text color={cardColor} fontSize="sm">
+              <Text color={cardColor} fontSize="xs">
                 {suitSymbol}
               </Text>
             </Flex>
@@ -276,10 +276,10 @@ const Card: React.FC<CardProps> = ({
         <Grid 
           templateColumns="repeat(3, 1fr)" 
           templateRows="repeat(3, 1fr)"
-          gap={1}
+          gap={0}
           width="100%"
           height="100%"
-          padding={1}
+          padding={0}
         >
           {Array.from({ length: 9 }).map((_, i) => {
             // Special layouts for 7, 8, 9
@@ -297,7 +297,7 @@ const Card: React.FC<CardProps> = ({
                 alignItems="center"
                 visibility={showSymbol ? 'visible' : 'hidden'}
               >
-                <Text color={cardColor} fontSize="xs">
+                <Text color={cardColor} fontSize="2xs">
                   {suitSymbol}
                 </Text>
               </Flex>
@@ -314,7 +314,7 @@ const Card: React.FC<CardProps> = ({
               justifyContent="center" 
               alignItems="center"
             >
-              <Text color={cardColor} fontSize="sm">
+              <Text color={cardColor} fontSize="xs">
                 {suitSymbol}
               </Text>
             </Flex>
@@ -642,6 +642,7 @@ interface GameRoomSectionProps {
   isMyTurn: boolean;
   startGame: () => void;
   endGame: () => void;
+  exitToLobby: () => void;
   selectPile: (pileIndex: number) => void;
   makePrediction: (prediction: Prediction) => void;
   currentPlayer?: Player;
@@ -654,6 +655,7 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
   isMyTurn,
   startGame,
   endGame,
+  exitToLobby,
   selectPile,
   makePrediction,
   currentPlayer,
@@ -906,16 +908,27 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
           {isWaiting ? 'Waiting for Players' : isPlaying ? 'Game in Progress' : 'Game Over'}
         </Badge>
         
-        {isHost && isPlaying && (
+        <Flex gap={2}>
+          {isHost && isPlaying && (
+            <Button 
+              size="sm" 
+              colorScheme="red" 
+              onClick={endGame}
+              mt={1}
+            >
+              End Game
+            </Button>
+          )}
+          
           <Button 
             size="sm" 
-            colorScheme="red" 
-            onClick={endGame}
+            colorScheme="gray" 
+            onClick={exitToLobby}
             mt={1}
           >
-            End Game
+            Exit to Lobby
           </Button>
-        )}
+        </Flex>
       </Flex>
       
       <Box textAlign="right">
@@ -995,19 +1008,31 @@ function App() {
     // Check if we have session data in localStorage
     const savedSessionId = localStorage.getItem('sessionId');
     const savedUsername = localStorage.getItem('username');
+    const savedGameId = localStorage.getItem('gameId');
     
-    if (savedSessionId && savedUsername) {
+    if (savedSessionId && savedUsername && savedGameId) {
+      // Set the saved values immediately to prevent flashing the home screen
+      setUsername(savedUsername);
+      setSessionId(savedSessionId);
+      setGameId(savedGameId);
+      
+      // Show a loading toast
+      toast({
+        title: "Reconnecting...",
+        description: "Attempting to reconnect to your game",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+        position: "top"
+      });
+      
       // Attempt to reconnect with the saved session
       socket.emit('reconnect', { 
         sessionId: savedSessionId, 
         username: savedUsername 
       });
-      
-      // Set the username from localStorage
-      setUsername(savedUsername);
-      setSessionId(savedSessionId);
     }
-  }, [socket]);
+  }, [socket, toast]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1054,11 +1079,23 @@ function App() {
       localStorage.setItem('gameId', gameId);
     });
 
+    // Player joined event
+    socket.on('playerJoined', ({ playerId, username: joinedUsername }) => {
+      toast({
+        title: "Player joined",
+        description: `${joinedUsername} has joined the game.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "top"
+      });
+    });
+
     // Player disconnected event
-    socket.on('playerDisconnected', ({ playerId, username }) => {
+    socket.on('playerDisconnected', ({ playerId, username: disconnectedUsername }) => {
       toast({
         title: "Player disconnected",
-        description: `${username} has disconnected. They can rejoin within 5 minutes.`,
+        description: `${disconnectedUsername} has disconnected. They can rejoin within 5 minutes.`,
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -1067,10 +1104,10 @@ function App() {
     });
 
     // Player left event (after timeout)
-    socket.on('playerLeft', ({ playerId }) => {
+    socket.on('playerLeft', ({ playerId, username: leftUsername }) => {
       toast({
         title: "Player left",
-        description: "A player has left the game.",
+        description: leftUsername ? `${leftUsername} has left the game.` : "A player has left the game.",
         status: "info",
         duration: 5000,
         isClosable: true,
@@ -1170,6 +1207,7 @@ function App() {
       socket.off('updateGame');
       socket.off('gameCreated');
       socket.off('gameJoined');
+      socket.off('playerJoined');
       socket.off('playerDisconnected');
       socket.off('playerLeft');
       socket.off('reconnectFailed');
@@ -1239,6 +1277,33 @@ function App() {
     return currentPlayer?.id === playerId;
   };
 
+  // Exit to lobby
+  const exitToLobby = () => {
+    // Clear game state and return to home screen
+    setGameState(null);
+    setPlayerId(null);
+    setGameId(null);
+    
+    // Clear session data from localStorage
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('username');
+    localStorage.removeItem('gameId');
+    
+    // Notify the server that the player is leaving
+    if (socket && gameId) {
+      socket.emit('leaveGame', { gameId });
+    }
+    
+    toast({
+      title: "Exited game",
+      description: "You have returned to the lobby",
+      status: "info",
+      duration: 3000,
+      isClosable: true,
+      position: "top"
+    });
+  };
+
   return (
     <Box minH="100vh" bg="gray.50" p={3}>
       {showConfetti && (
@@ -1300,6 +1365,7 @@ function App() {
             isMyTurn={isMyTurn()}
             startGame={startGame}
             endGame={endGame}
+            exitToLobby={exitToLobby}
             selectPile={selectPile}
             makePrediction={makePrediction}
             currentPlayer={getCurrentPlayer()}
