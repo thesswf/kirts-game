@@ -724,19 +724,66 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
     makePrediction(prediction);
   };
 
-  // Render game code for sharing
-  const renderGameCode = () => (
-    <Box textAlign="center" mb={4}>
-      <Text fontSize="sm" color="gray.500">Game Code:</Text>
-      <Heading size="md" color="teal.500" className="game-code">{gameState.id}</Heading>
-      <Text fontSize="xs" mt={1}>Share this code with friends to join</Text>
-    </Box>
+  // Render game status bar with End Game button for host
+  const renderGameStatusBar = () => (
+    <Flex justifyContent="space-between" alignItems="center" mb={6}>
+      <Box>
+        <Text fontSize="sm" color="gray.500">Playing as</Text>
+        <Text fontWeight="bold">{username}</Text>
+      </Box>
+      
+      <Flex direction="column" alignItems="center">
+        <Badge 
+          colorScheme={isWaiting ? 'yellow' : isPlaying ? 'green' : 'purple'} 
+          p={2} 
+          borderRadius="md"
+          mb={2}
+        >
+          {isWaiting ? 'Waiting for Players' : isPlaying ? 'Game in Progress' : 'Game Over'}
+        </Badge>
+        
+        {/* Always show game code for easy sharing */}
+        <Box textAlign="center" mb={2}>
+          <Text fontSize="sm" color="gray.500">Game Code:</Text>
+          <Heading size="md" color="teal.500" className="game-code">{gameState.id}</Heading>
+        </Box>
+        
+        <Flex gap={2}>
+          {isHost && isPlaying && (
+            <Button 
+              size="sm" 
+              colorScheme="red" 
+              onClick={endGame}
+              mt={1}
+            >
+              End Game
+            </Button>
+          )}
+          
+          <Button 
+            size="sm" 
+            colorScheme="gray" 
+            onClick={exitToLobby}
+            mt={1}
+          >
+            Exit to Lobby
+          </Button>
+        </Flex>
+      </Flex>
+      
+      <Box textAlign="right">
+        <Text fontSize="sm" color="gray.500">Current Turn</Text>
+        <Text fontWeight="bold">
+          {currentPlayerName} {currentPlayerName === username ? '(You)' : ''}
+        </Text>
+      </Box>
+    </Flex>
   );
 
   // Render waiting room
   const renderWaitingRoom = () => (
     <Stack direction="column" align="stretch" style={{ gap: '1.5rem' }}>
-      {renderGameCode()}
+      {/* Game code is now shown in the status bar, so we don't need it here */}
       
       <Box>
         <Heading size="md" mb={2}>Players ({gameState.players.length})</Heading>
@@ -771,6 +818,8 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
       mb={6}
       className="card-grid"
     >
+      {/* Game Code Display is now in the status bar */}
+      
       {/* Remaining Cards Counter */}
       <Box 
         gridColumn="1 / -1" 
@@ -923,56 +972,6 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
     </Stack>
   );
 
-  // Render game status bar with End Game button for host
-  const renderGameStatusBar = () => (
-    <Flex justifyContent="space-between" alignItems="center" mb={6}>
-      <Box>
-        <Text fontSize="sm" color="gray.500">Playing as</Text>
-        <Text fontWeight="bold">{username}</Text>
-      </Box>
-      
-      <Flex direction="column" alignItems="center">
-        <Badge 
-          colorScheme={isWaiting ? 'yellow' : isPlaying ? 'green' : 'purple'} 
-          p={2} 
-          borderRadius="md"
-          mb={2}
-        >
-          {isWaiting ? 'Waiting for Players' : isPlaying ? 'Game in Progress' : 'Game Over'}
-        </Badge>
-        
-        <Flex gap={2}>
-          {isHost && isPlaying && (
-            <Button 
-              size="sm" 
-              colorScheme="red" 
-              onClick={endGame}
-              mt={1}
-            >
-              End Game
-            </Button>
-          )}
-          
-          <Button 
-            size="sm" 
-            colorScheme="gray" 
-            onClick={exitToLobby}
-            mt={1}
-          >
-            Exit to Lobby
-          </Button>
-        </Flex>
-      </Flex>
-      
-      <Box textAlign="right">
-        <Text fontSize="sm" color="gray.500">Current Turn</Text>
-        <Text fontWeight="bold">
-          {currentPlayerName} {currentPlayerName === username ? '(You)' : ''}
-        </Text>
-      </Box>
-    </Flex>
-  );
-
   return (
     <Box 
       w="100%" 
@@ -1042,6 +1041,32 @@ function App() {
       // Add connection event listeners
       newSocket.on('connect', () => {
         console.log('Successfully connected to server with ID:', newSocket.id);
+        
+        // Attempt reconnection immediately after connection is established
+        const savedSession = localStorage.getItem('cardGameSession');
+        if (savedSession) {
+          try {
+            const session = JSON.parse(savedSession);
+            if (session.username && session.gameId && session.sessionId) {
+              console.log('Found saved session, attempting to reconnect...', session);
+              setUsername(session.username);
+              setGameId(session.gameId);
+              setSessionId(session.sessionId);
+              
+              // Attempt reconnection immediately
+              newSocket.emit('reconnect', { 
+                username: session.username, 
+                sessionId: session.sessionId 
+              });
+              
+              // Show reconnecting notification
+              setNotification(`Reconnecting to game ${session.gameId}...`);
+            }
+          } catch (error) {
+            console.error('Error parsing saved session:', error);
+            localStorage.removeItem('cardGameSession');
+          }
+        }
       });
       
       newSocket.on('connect_error', (error) => {
@@ -1061,27 +1086,9 @@ function App() {
       
       setSocket(newSocket);
       
-      // Check for saved session in localStorage
-      const savedSession = localStorage.getItem('cardGameSession');
-      if (savedSession) {
-        try {
-          const session = JSON.parse(savedSession);
-          if (session.username && session.gameId && session.sessionId) {
-            console.log('Found saved session, attempting to reconnect...');
-            setUsername(session.username);
-            setGameId(session.gameId);
-            setSessionId(session.sessionId);
-            
-            // We'll attempt reconnection after socket is connected
-          }
-        } catch (error) {
-          console.error('Error parsing saved session:', error);
-          localStorage.removeItem('cardGameSession');
-        }
-      }
-
       // Socket event listeners
       newSocket.on('gameCreated', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+        console.log('Game created:', { gameId, playerId, sessionId });
         setGameId(gameId);
         setPlayerId(playerId);
         setSessionId(sessionId);
@@ -1091,6 +1098,7 @@ function App() {
       });
 
       newSocket.on('gameJoined', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+        console.log('Game joined:', { gameId, playerId, sessionId });
         setGameId(gameId);
         setPlayerId(playerId);
         setSessionId(sessionId);
@@ -1157,14 +1165,6 @@ function App() {
       setErrorMessage('Failed to connect to game server. Please refresh the page and try again.');
     }
   }, []);
-
-  // Attempt reconnection if we have session data
-  useEffect(() => {
-    if (socket && socket.connected && username && gameId && sessionId && !gameState) {
-      console.log('Attempting to reconnect with session:', { username, sessionId });
-      socket.emit('reconnect', { username, sessionId });
-    }
-  }, [socket, username, gameId, sessionId, gameState]);
 
   // Save session data to localStorage
   const saveSessionToLocalStorage = (username: string, gameId: string, sessionId: string) => {
