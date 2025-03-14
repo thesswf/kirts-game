@@ -411,13 +411,13 @@ const Card: React.FC<CardProps> = ({
 };
 
 // Player list component
-interface PlayerListProps {
+interface PlayerListSectionProps {
   players: Player[];
   currentPlayerId: string | null;
   currentTurnIndex?: number;
 }
 
-const PlayerList: React.FC<PlayerListProps> = ({ 
+const PlayerListSection: React.FC<PlayerListSectionProps> = ({ 
   players, 
   currentPlayerId,
   currentTurnIndex 
@@ -550,7 +550,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
       
       <Box>
         <Heading size="md" mb={2}>Players ({gameState.players.length})</Heading>
-        <PlayerList players={gameState.players} currentPlayerId={playerId} />
+        <PlayerListSection players={gameState.players} currentPlayerId={playerId} />
       </Box>
       
       {isHost && (
@@ -778,7 +778,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
           
           <Box mt={6}>
             <Heading size="sm" mb={2}>Players</Heading>
-            <PlayerList 
+            <PlayerListSection 
               players={gameState.players} 
               currentPlayerId={playerId}
               currentTurnIndex={gameState.currentPlayerIndex}
