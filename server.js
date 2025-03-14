@@ -72,8 +72,8 @@ function compareCards(card1, card2, prediction) {
 
 // Move to the next active (non-disconnected) player
 function moveToNextActivePlayer(game) {
-  // Reset the current pile
-  game.currentPileIndex = null;
+  // Don't reset the current pile anymore
+  // game.currentPileIndex = null;
   
   // If there are no players, return
   if (game.players.length === 0) return;
@@ -99,6 +99,34 @@ function moveToNextActivePlayer(game) {
   
   // Log the player change
   console.log(`Moving to next player: ${game.players[nextPlayerIndex].username} (index: ${nextPlayerIndex})`);
+}
+
+// Move to the next active (non-disconnected) player without resetting the current pile
+function moveToNextActivePlayerPreservingPile(game) {
+  // If there are no players, return
+  if (game.players.length === 0) return;
+  
+  // Start from the next player
+  let nextPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+  const startIndex = nextPlayerIndex; // Remember where we started
+  
+  // Find the next non-disconnected player
+  while (game.players[nextPlayerIndex].disconnected) {
+    // Move to the next player
+    nextPlayerIndex = (nextPlayerIndex + 1) % game.players.length;
+    
+    // If we've checked all players and they're all disconnected, break the loop
+    if (nextPlayerIndex === startIndex) {
+      console.log(`All players in game ${game.id} are disconnected`);
+      break;
+    }
+  }
+  
+  // Update the current player index
+  game.currentPlayerIndex = nextPlayerIndex;
+  
+  // Log the player change
+  console.log(`Moving to next player: ${game.players[nextPlayerIndex].username} (index: ${nextPlayerIndex}), preserving pile selection`);
 }
 
 // Socket.io connection handling
@@ -343,7 +371,11 @@ io.on('connection', (socket) => {
       // If it was this player's turn, move to the next player
       if (game.currentPlayerIndex === playerIndex) {
         if (game.status === 'playing') {
-          moveToNextActivePlayer(game);
+          // Use the new function to preserve pile selection
+          // Adjust the current player index first since we removed a player
+          if (game.currentPlayerIndex >= game.players.length) {
+            game.currentPlayerIndex = 0;
+          }
         } else {
           game.currentPlayerIndex = 0; // Reset to first player if not playing
         }
@@ -407,8 +439,7 @@ io.on('connection', (socket) => {
           if (game.currentPlayerIndex >= game.players.length) {
             game.currentPlayerIndex = 0;
           }
-          // Reset the current pile
-          game.currentPileIndex = null;
+          // Don't reset the current pile
         } else if (game.currentPlayerIndex > playerIndex) {
           // If the current player index is after the removed player, decrement it
           game.currentPlayerIndex--;
@@ -597,8 +628,8 @@ io.on('connection', (socket) => {
       
       game.winner = winner ? winner.username : null;
     } else {
-      // Move to the next player, skipping disconnected players
-      moveToNextActivePlayer(game);
+      // Move to the next player, preserving the current pile selection
+      moveToNextActivePlayerPreservingPile(game);
     }
     
     // Update the game state
