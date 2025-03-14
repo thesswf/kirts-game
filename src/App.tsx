@@ -1184,6 +1184,21 @@ function App() {
   useEffect(() => {
     const handleUpdateGame = (game: ExtendedGameState) => {
       console.log('Game updated:', game);
+      
+      // Check if the current player is disconnected and show a notification
+      if (gameState && 
+          game.status === 'playing' && 
+          gameState.currentPlayerIndex !== game.currentPlayerIndex) {
+        
+        const previousPlayer = gameState.players[gameState.currentPlayerIndex];
+        if (previousPlayer && previousPlayer.disconnected) {
+          setNotification({
+            message: `Skipping ${previousPlayer.username}'s turn (disconnected)`,
+            type: 'info'
+          });
+        }
+      }
+      
       setGameState(game);
       
       // Check if all piles are dead

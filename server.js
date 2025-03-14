@@ -70,6 +70,37 @@ function compareCards(card1, card2, prediction) {
   }
 }
 
+// Move to the next active (non-disconnected) player
+function moveToNextActivePlayer(game) {
+  // Reset the current pile
+  game.currentPileIndex = null;
+  
+  // If there are no players, return
+  if (game.players.length === 0) return;
+  
+  // Start from the next player
+  let nextPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+  const startIndex = nextPlayerIndex; // Remember where we started
+  
+  // Find the next non-disconnected player
+  while (game.players[nextPlayerIndex].disconnected) {
+    // Move to the next player
+    nextPlayerIndex = (nextPlayerIndex + 1) % game.players.length;
+    
+    // If we've checked all players and they're all disconnected, break the loop
+    if (nextPlayerIndex === startIndex) {
+      console.log(`All players in game ${game.id} are disconnected`);
+      break;
+    }
+  }
+  
+  // Update the current player index
+  game.currentPlayerIndex = nextPlayerIndex;
+  
+  // Log the player change
+  console.log(`Moving to next player: ${game.players[nextPlayerIndex].username} (index: ${nextPlayerIndex})`);
+}
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -318,7 +349,11 @@ io.on('connection', (socket) => {
       
       // If it was this player's turn, move to the next player
       if (game.currentPlayerIndex === playerIndex) {
-        game.currentPlayerIndex = game.currentPlayerIndex % game.players.length;
+        if (game.status === 'playing') {
+          moveToNextActivePlayer(game);
+        } else {
+          game.currentPlayerIndex = 0; // Reset to first player if not playing
+        }
       } else if (game.currentPlayerIndex > playerIndex) {
         game.currentPlayerIndex--;
       }
@@ -351,6 +386,12 @@ io.on('connection', (socket) => {
         // Mark the player as disconnected instead of removing immediately
         player.disconnected = true;
         player.disconnectedAt = Date.now();
+        
+        // If it's this player's turn and the game is in progress, move to the next player
+        if (game.status === 'playing' && game.currentPlayerIndex === playerIndex) {
+          console.log(`It was ${player.username}'s turn, moving to next player`);
+          moveToNextActivePlayer(game);
+        }
         
         // Notify other players about the disconnection
         socket.to(gameId).emit('playerDisconnected', {
@@ -389,7 +430,7 @@ io.on('connection', (socket) => {
             
             // If it was this player's turn, move to the next player
             if (games[gameId].currentPlayerIndex === playerIndex) {
-              games[gameId].currentPlayerIndex = games[gameId].currentPlayerIndex % games[gameId].players.length;
+              moveToNextActivePlayer(games[gameId]);
             } else if (games[gameId].currentPlayerIndex > playerIndex) {
               games[gameId].currentPlayerIndex--;
             }
@@ -579,9 +620,8 @@ io.on('connection', (socket) => {
       
       game.winner = winner ? winner.username : null;
     } else {
-      // Move to the next player
-      game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
-      game.currentPileIndex = null;
+      // Move to the next player, skipping disconnected players
+      moveToNextActivePlayer(game);
     }
     
     // Update the game state
