@@ -19,6 +19,8 @@ export interface Player {
   id: string;
   username: string;
   isHost: boolean;
+  correctPredictions?: number;
+  totalPredictions?: number;
 }
 
 export interface GameState {

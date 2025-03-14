@@ -13,11 +13,40 @@ const PlayerList: React.FC<PlayerListProps> = ({
   currentPlayerId,
   currentTurnIndex 
 }) => {
+  // Reorder players to show current player at the top, followed by upcoming players
+  const getOrderedPlayers = () => {
+    if (currentTurnIndex === undefined || players.length === 0) {
+      return players;
+    }
+    
+    // Create a new array with players in turn order, starting with current player
+    const orderedPlayers = [];
+    for (let i = 0; i < players.length; i++) {
+      const index = (currentTurnIndex + i) % players.length;
+      orderedPlayers.push(players[index]);
+    }
+    
+    return orderedPlayers;
+  };
+  
+  // Calculate success rate percentage
+  const getSuccessRate = (player: Player) => {
+    if (!player.totalPredictions || player.totalPredictions === 0) {
+      return 'N/A';
+    }
+    
+    const rate = (player.correctPredictions || 0) / player.totalPredictions * 100;
+    return `${Math.round(rate)}%`;
+  };
+  
+  const orderedPlayers = getOrderedPlayers();
+  
   return (
-    <VStack align="stretch" style={{ gap: '0.5rem' }}>
-      {players.map((player, index) => {
+    <VStack spacing={2} align="stretch">
+      {orderedPlayers.map((player, index) => {
         const isCurrentUser = player.id === currentPlayerId;
-        const isCurrentTurn = currentTurnIndex !== undefined && index === currentTurnIndex;
+        const isCurrentTurn = index === 0 && currentTurnIndex !== undefined;
+        const successRate = getSuccessRate(player);
         
         return (
           <Box 
@@ -29,9 +58,15 @@ const PlayerList: React.FC<PlayerListProps> = ({
             borderColor={isCurrentTurn ? 'teal.200' : 'gray.200'}
           >
             <Flex justify="space-between" align="center">
-              <Text fontWeight={isCurrentUser ? 'bold' : 'normal'}>
-                {player.username} {isCurrentUser && '(You)'}
-              </Text>
+              <Flex align="center">
+                <Text fontWeight={isCurrentUser ? 'bold' : 'normal'}>
+                  {player.username} {isCurrentUser && '(You)'}
+                </Text>
+                
+                <Badge ml={2} colorScheme="blue">
+                  {successRate}
+                </Badge>
+              </Flex>
               
               <Flex>
                 {player.isHost && (

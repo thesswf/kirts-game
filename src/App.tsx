@@ -250,26 +250,26 @@ const Card: React.FC<CardProps> = ({
         {/* Card Front */}
         <Box className="card-front" p={2}>
           <Flex flexDirection="column" justifyContent="space-between" height="100%">
-            <Box>
-              <Text fontSize="xl" fontWeight="bold" color={cardColor}>
+            <Box className="card-corner">
+              <Text fontWeight="bold" color={cardColor}>
                 {value}
               </Text>
-              <Text fontSize="xl" color={cardColor}>
+              <Text color={cardColor}>
                 {suitSymbol}
               </Text>
             </Box>
             
-            <Flex justifyContent="center" alignItems="center" flex="1">
-              <Text fontSize="4xl" color={cardColor}>
+            <Flex justifyContent="center" alignItems="center" flex="1" className="card-center">
+              <Text color={cardColor}>
                 {suitSymbol}
               </Text>
             </Flex>
             
-            <Box transform="rotate(180deg)">
-              <Text fontSize="xl" fontWeight="bold" color={cardColor}>
+            <Box transform="rotate(180deg)" className="card-corner">
+              <Text fontWeight="bold" color={cardColor}>
                 {value}
               </Text>
-              <Text fontSize="xl" color={cardColor}>
+              <Text color={cardColor}>
                 {suitSymbol}
               </Text>
             </Box>
@@ -645,7 +645,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
                 boxShadow="md"
                 zIndex={5}
               >
-                Current Pile
+                Current
               </Box>
             )}
           </Box>

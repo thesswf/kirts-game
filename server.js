@@ -72,7 +72,13 @@ io.on('connection', (socket) => {
     const gameId = generateGameId();
     games[gameId] = {
       id: gameId,
-      players: [{id: socket.id, username, isHost: true}],
+      players: [{
+        id: socket.id, 
+        username, 
+        isHost: true,
+        correctPredictions: 0,
+        totalPredictions: 0
+      }],
       status: 'waiting',
       deck: [],
       piles: [],
@@ -101,7 +107,13 @@ io.on('connection', (socket) => {
       return;
     }
     
-    game.players.push({ id: socket.id, username, isHost: false });
+    game.players.push({ 
+      id: socket.id, 
+      username, 
+      isHost: false,
+      correctPredictions: 0,
+      totalPredictions: 0
+    });
     socket.join(gameId);
     socket.emit('gameJoined', { gameId, playerId: socket.id });
     io.to(gameId).emit('updateGame', game);
@@ -197,6 +209,13 @@ io.on('connection', (socket) => {
     
     // Check if the prediction is correct
     const isCorrect = compareCards(topCard, newCard, prediction);
+    
+    // Update player's prediction stats
+    const currentPlayer = game.players[game.currentPlayerIndex];
+    currentPlayer.totalPredictions = (currentPlayer.totalPredictions || 0) + 1;
+    if (isCorrect) {
+      currentPlayer.correctPredictions = (currentPlayer.correctPredictions || 0) + 1;
+    }
     
     // Always add the new card to the pile first so it's visible
     currentPile.cards.push(newCard);
@@ -331,9 +350,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// Generate a random game ID
+// Generate a random game ID (3 characters instead of 6)
 function generateGameId() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Use uppercase letters and numbers for better readability
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters (I, O, 0, 1)
+  let result = '';
+  for (let i = 0; i < 3; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
 
 // Start the server

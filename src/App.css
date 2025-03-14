@@ -118,6 +118,15 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
   }
+  
+  /* Make card content smaller on mobile */
+  .card-front .card-corner {
+    font-size: 14px !important;
+  }
+  
+  .card-front .card-center {
+    font-size: 24px !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -125,6 +134,29 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: 5px;
   }
+  
+  /* Make card content even smaller on very small screens */
+  .card-front .card-corner {
+    font-size: 12px !important;
+  }
+  
+  .card-front .card-center {
+    font-size: 20px !important;
+  }
+}
+
+/* Card content classes for better control */
+.card-corner {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.card-center {
+  font-size: 28px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
 }
 
 /* Success animation for newly dealt cards */
