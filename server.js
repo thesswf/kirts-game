@@ -18,11 +18,16 @@ const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  // Add ping timeout and interval settings to handle disconnections better
+  pingTimeout: 60000, // 1 minute
+  pingInterval: 25000, // 25 seconds
 });
 
 // Game state
 let games = {};
+// Player session mapping to handle reconnections
+let playerSessions = {};
 
 // Card values from lowest to highest
 const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -67,9 +72,45 @@ function compareCards(card1, card2, prediction) {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
+  // Check if this is a reconnection
+  socket.on('reconnect', ({ username, sessionId }) => {
+    if (sessionId && playerSessions[sessionId]) {
+      const session = playerSessions[sessionId];
+      const gameId = session.gameId;
+      const oldSocketId = session.socketId;
+      
+      // Update the session with the new socket ID
+      playerSessions[sessionId].socketId = socket.id;
+      
+      // If the game exists, update the player's socket ID
+      if (games[gameId]) {
+        const playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
+        if (playerIndex !== -1) {
+          // Update the player's socket ID
+          games[gameId].players[playerIndex].id = socket.id;
+          
+          // Join the game room
+          socket.join(gameId);
+          
+          // Send the updated game state to the reconnected player
+          socket.emit('gameJoined', { gameId, playerId: socket.id });
+          socket.emit('updateGame', games[gameId]);
+          
+          console.log(`Player ${username} reconnected to game ${gameId}`);
+          return;
+        }
+      }
+    }
+    
+    // If reconnection failed, inform the client
+    socket.emit('reconnectFailed');
+  });
+  
   // Create a new game
   socket.on('createGame', (username) => {
     const gameId = generateGameId();
+    const sessionId = generateSessionId();
+    
     games[gameId] = {
       id: gameId,
       players: [{
@@ -77,7 +118,8 @@ io.on('connection', (socket) => {
         username, 
         isHost: true,
         correctPredictions: 0,
-        totalPredictions: 0
+        totalPredictions: 0,
+        sessionId // Store the session ID with the player
       }],
       status: 'waiting',
       deck: [],
@@ -88,8 +130,15 @@ io.on('connection', (socket) => {
       firstTurnAfterPileDeath: true // Track if it's the first turn after a pile death
     };
     
+    // Store the session information
+    playerSessions[sessionId] = {
+      socketId: socket.id,
+      username,
+      gameId
+    };
+    
     socket.join(gameId);
-    socket.emit('gameCreated', { gameId, playerId: socket.id });
+    socket.emit('gameCreated', { gameId, playerId: socket.id, sessionId });
     io.to(gameId).emit('updateGame', games[gameId]);
   });
   
@@ -107,15 +156,26 @@ io.on('connection', (socket) => {
       return;
     }
     
+    const sessionId = generateSessionId();
+    
     game.players.push({ 
       id: socket.id, 
       username, 
       isHost: false,
       correctPredictions: 0,
-      totalPredictions: 0
+      totalPredictions: 0,
+      sessionId // Store the session ID with the player
     });
+    
+    // Store the session information
+    playerSessions[sessionId] = {
+      socketId: socket.id,
+      username,
+      gameId
+    };
+    
     socket.join(gameId);
-    socket.emit('gameJoined', { gameId, playerId: socket.id });
+    socket.emit('gameJoined', { gameId, playerId: socket.id, sessionId });
     io.to(gameId).emit('updateGame', game);
   });
   
@@ -347,28 +407,62 @@ io.on('connection', (socket) => {
       const playerIndex = game.players.findIndex(p => p.id === socket.id);
       
       if (playerIndex !== -1) {
-        // Remove the player
-        game.players.splice(playerIndex, 1);
+        const player = game.players[playerIndex];
         
-        // If no players left, remove the game
-        if (game.players.length === 0) {
-          delete games[gameId];
-          continue;
-        }
+        // Don't immediately remove the player, just mark them as disconnected
+        // This allows them to reconnect later
+        player.disconnected = true;
+        player.disconnectedAt = Date.now();
         
-        // If the host left, assign a new host
-        if (!game.players.some(p => p.isHost)) {
-          game.players[0].isHost = true;
-        }
+        // After a timeout (5 minutes), remove the player if they haven't reconnected
+        setTimeout(() => {
+          // Check if the player is still in the game and still disconnected
+          const currentGame = games[gameId];
+          if (currentGame) {
+            const currentPlayerIndex = currentGame.players.findIndex(p => 
+              p.sessionId === player.sessionId && p.disconnected);
+            
+            if (currentPlayerIndex !== -1) {
+              console.log(`Removing player ${player.username} from game ${gameId} after timeout`);
+              
+              // Remove the player
+              currentGame.players.splice(currentPlayerIndex, 1);
+              
+              // If no players left, remove the game
+              if (currentGame.players.length === 0) {
+                delete games[gameId];
+                // Clean up any sessions associated with this game
+                for (const sid in playerSessions) {
+                  if (playerSessions[sid].gameId === gameId) {
+                    delete playerSessions[sid];
+                  }
+                }
+                return;
+              }
+              
+              // If the host left, assign a new host
+              if (!currentGame.players.some(p => p.isHost)) {
+                currentGame.players[0].isHost = true;
+              }
+              
+              // If it was this player's turn, move to the next player
+              if (currentGame.currentPlayerIndex === currentPlayerIndex) {
+                currentGame.currentPlayerIndex = currentGame.currentPlayerIndex % currentGame.players.length;
+              } else if (currentGame.currentPlayerIndex > currentPlayerIndex) {
+                currentGame.currentPlayerIndex--;
+              }
+              
+              io.to(gameId).emit('playerLeft', { playerId: player.id });
+              io.to(gameId).emit('updateGame', currentGame);
+            }
+          }
+        }, 5 * 60 * 1000); // 5 minutes
         
-        // If it was this player's turn, move to the next player
-        if (game.currentPlayerIndex === playerIndex) {
-          game.currentPlayerIndex = game.currentPlayerIndex % game.players.length;
-        } else if (game.currentPlayerIndex > playerIndex) {
-          game.currentPlayerIndex--;
-        }
-        
-        io.to(gameId).emit('playerLeft', { playerId: socket.id });
+        // Notify other players that this player has disconnected
+        io.to(gameId).emit('playerDisconnected', { 
+          playerId: socket.id,
+          username: player.username
+        });
         io.to(gameId).emit('updateGame', game);
       }
     }
@@ -377,6 +471,17 @@ io.on('connection', (socket) => {
 
 // Generate a random game ID (3 characters instead of 6)
 function generateGameId() {
+  // Use uppercase letters and numbers for better readability
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters (I, O, 0, 1)
+  let result = '';
+  for (let i = 0; i < 3; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Generate a random session ID (3 characters instead of 6)
+function generateSessionId() {
   // Use uppercase letters and numbers for better readability
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters (I, O, 0, 1)
   let result = '';

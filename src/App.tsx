@@ -200,6 +200,130 @@ const Card: React.FC<CardProps> = ({
   
   const suitSymbol = getSuitSymbol(suit);
   
+  // Generate the appropriate number of suit symbols based on card value
+  const getCardCenterContent = () => {
+    // For face cards (J, Q, K) and Ace, show a single large symbol
+    if (['J', 'Q', 'K', 'A'].includes(value)) {
+      return (
+        <Text fontSize="3xl" color={cardColor}>
+          {value === 'A' ? suitSymbol : value}
+        </Text>
+      );
+    }
+    
+    // For number cards, show the appropriate number of suit symbols
+    const count = value === '10' ? 10 : parseInt(value);
+    
+    // Different layouts based on the number of symbols
+    if (count <= 4) {
+      // Simple grid for 2, 3, 4
+      return (
+        <Grid 
+          templateColumns="repeat(2, 1fr)" 
+          gap={1}
+          width="100%"
+          height="100%"
+          padding={2}
+        >
+          {Array.from({ length: count }).map((_, i) => (
+            <Flex 
+              key={i} 
+              justifyContent="center" 
+              alignItems="center"
+              visibility={
+                // For 3, hide the bottom-left symbol
+                count === 3 && i === 2 ? 'hidden' : 'visible'
+              }
+            >
+              <Text color={cardColor} fontSize="sm">
+                {suitSymbol}
+              </Text>
+            </Flex>
+          ))}
+        </Grid>
+      );
+    } else if (count <= 6) {
+      // 2x3 grid for 5, 6
+      return (
+        <Grid 
+          templateColumns="repeat(2, 1fr)" 
+          templateRows="repeat(3, 1fr)"
+          gap={1}
+          width="100%"
+          height="100%"
+          padding={2}
+        >
+          {Array.from({ length: count }).map((_, i) => (
+            <Flex 
+              key={i} 
+              justifyContent="center" 
+              alignItems="center"
+              visibility={
+                // For 5, hide the middle symbol
+                count === 5 && i === 2 ? 'hidden' : 'visible'
+              }
+            >
+              <Text color={cardColor} fontSize="sm">
+                {suitSymbol}
+              </Text>
+            </Flex>
+          ))}
+        </Grid>
+      );
+    } else {
+      // 3x3 grid for 7, 8, 9, 10
+      return (
+        <Grid 
+          templateColumns="repeat(3, 1fr)" 
+          templateRows="repeat(3, 1fr)"
+          gap={1}
+          width="100%"
+          height="100%"
+          padding={1}
+        >
+          {Array.from({ length: 9 }).map((_, i) => {
+            // Special layouts for 7, 8, 9
+            const showSymbol = 
+              count === 7 ? (i !== 3 && i !== 5) : // 7: hide middle symbols
+              count === 8 ? (i !== 4) : // 8: hide center
+              count === 9 ? true : // 9: show all
+              count === 10 ? true : // 10: show all (with extra in middle)
+              false;
+              
+            return (
+              <Flex 
+                key={i} 
+                justifyContent="center" 
+                alignItems="center"
+                visibility={showSymbol ? 'visible' : 'hidden'}
+              >
+                <Text color={cardColor} fontSize="xs">
+                  {suitSymbol}
+                </Text>
+              </Flex>
+            );
+          })}
+          
+          {/* Extra symbol in the middle for 10 */}
+          {count === 10 && (
+            <Flex 
+              position="absolute"
+              top="50%"
+              left="50%"
+              transform="translate(-50%, -50%)"
+              justifyContent="center" 
+              alignItems="center"
+            >
+              <Text color={cardColor} fontSize="sm">
+                {suitSymbol}
+              </Text>
+            </Flex>
+          )}
+        </Grid>
+      );
+    }
+  };
+  
   // Determine animation class based on prediction result or revival
   let animationClass = '';
   if (isNewlyDealt) {
@@ -273,9 +397,7 @@ const Card: React.FC<CardProps> = ({
             </Box>
             
             <Flex justifyContent="center" alignItems="center" flex="1" className="card-center">
-              <Text color={cardColor}>
-                {suitSymbol}
-              </Text>
+              {getCardCenterContent()}
             </Flex>
             
             <Box transform="rotate(180deg)" className="card-corner">
@@ -849,6 +971,7 @@ function App() {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
   const [gameId, setGameId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showGameLost, setShowGameLost] = useState(false);
   const [windowDimensions, setWindowDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -864,6 +987,27 @@ function App() {
       newSocket.disconnect();
     };
   }, []);
+
+  // Try to reconnect on app load
+  useEffect(() => {
+    if (!socket) return;
+
+    // Check if we have session data in localStorage
+    const savedSessionId = localStorage.getItem('sessionId');
+    const savedUsername = localStorage.getItem('username');
+    
+    if (savedSessionId && savedUsername) {
+      // Attempt to reconnect with the saved session
+      socket.emit('reconnect', { 
+        sessionId: savedSessionId, 
+        username: savedUsername 
+      });
+      
+      // Set the username from localStorage
+      setUsername(savedUsername);
+      setSessionId(savedSessionId);
+    }
+  }, [socket]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -887,15 +1031,68 @@ function App() {
     });
 
     // Game created event
-    socket.on('gameCreated', ({ gameId, playerId }) => {
+    socket.on('gameCreated', ({ gameId, playerId, sessionId }) => {
       setGameId(gameId);
       setPlayerId(playerId);
+      setSessionId(sessionId);
+      
+      // Save session info to localStorage
+      localStorage.setItem('sessionId', sessionId);
+      localStorage.setItem('username', username);
+      localStorage.setItem('gameId', gameId);
     });
 
     // Game joined event
-    socket.on('gameJoined', ({ gameId, playerId }) => {
+    socket.on('gameJoined', ({ gameId, playerId, sessionId }) => {
       setGameId(gameId);
       setPlayerId(playerId);
+      setSessionId(sessionId);
+      
+      // Save session info to localStorage
+      localStorage.setItem('sessionId', sessionId);
+      localStorage.setItem('username', username);
+      localStorage.setItem('gameId', gameId);
+    });
+
+    // Player disconnected event
+    socket.on('playerDisconnected', ({ playerId, username }) => {
+      toast({
+        title: "Player disconnected",
+        description: `${username} has disconnected. They can rejoin within 5 minutes.`,
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+        position: "top"
+      });
+    });
+
+    // Player left event (after timeout)
+    socket.on('playerLeft', ({ playerId }) => {
+      toast({
+        title: "Player left",
+        description: "A player has left the game.",
+        status: "info",
+        duration: 5000,
+        isClosable: true,
+        position: "top"
+      });
+    });
+
+    // Reconnection failed event
+    socket.on('reconnectFailed', () => {
+      // Clear localStorage if reconnection failed
+      localStorage.removeItem('sessionId');
+      localStorage.removeItem('username');
+      localStorage.removeItem('gameId');
+      
+      toast({
+        title: "Reconnection failed",
+        description: "Your session has expired. Please join a new game.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "top"
+      });
     });
 
     // Pile revived event
@@ -973,11 +1170,14 @@ function App() {
       socket.off('updateGame');
       socket.off('gameCreated');
       socket.off('gameJoined');
+      socket.off('playerDisconnected');
+      socket.off('playerLeft');
+      socket.off('reconnectFailed');
       socket.off('pileRevived');
       socket.off('gameOver');
       socket.off('error');
     };
-  }, [socket, gameState, toast]);
+  }, [socket, gameState, toast, username]);
 
   // Create a new game
   const createGame = (username: string) => {
