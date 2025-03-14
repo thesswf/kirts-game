@@ -9,7 +9,10 @@ import {
   Input, 
   Text, 
   VStack, 
-  HStack, 
+  HStack,
+  Stack,
+  FormControl,
+  FormLabel, 
   useToast, 
   Badge
 } from '@chakra-ui/react';
@@ -895,7 +898,7 @@ function App() {
         setTimeout(() => {
           setShowConfetti(false);
         }, 8000);
-      } else if (data.gameState.piles.every(pile => !pile.active)) {
+      } else if (data.gameState.piles.every((pile: Pile) => !pile.active)) {
         setShowGameLost(true);
         toast({
           title: "LOSER!",
