@@ -41,7 +41,9 @@ interface ExtendedGameState extends GameState {
 }
 
 // Connect to the Socket.io server
-const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_SERVER || 'https://kirts-game.onrender.com';
+const SOCKET_SERVER_URL = process.env.NODE_ENV === 'development' 
+  ? 'http://192.168.68.51:3005'  // Local development server for testing on phone
+  : process.env.REACT_APP_SOCKET_SERVER || 'https://kirts-game.onrender.com';
 
 // Home component
 interface HomeScreenProps {
