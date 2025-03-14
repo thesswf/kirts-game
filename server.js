@@ -137,108 +137,120 @@ io.on('connection', (socket) => {
   socket.on('reconnect', ({ username, sessionId }) => {
     console.log(`Reconnection attempt for session ${sessionId} by ${username}`);
     
-    if (sessionId && playerSessions[sessionId]) {
-      const session = playerSessions[sessionId];
-      const gameId = session.gameId;
-      const oldSocketId = session.socketId;
-      
-      console.log(`Found session for ${username} in game ${gameId}, old socket: ${oldSocketId}`);
-      
-      // Update the session with the new socket ID
-      playerSessions[sessionId].socketId = socket.id;
-      playerSessions[sessionId].lastActive = Date.now();
-      
-      // If the game exists, try to add the player back
-      if (games[gameId]) {
-        // First try to find by old socket ID (unlikely since we now remove players on disconnect)
-        let playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
-        
-        // If not found by old socket ID, try to find by session ID
-        if (playerIndex === -1) {
-          playerIndex = games[gameId].players.findIndex(p => p.sessionId === sessionId);
-        }
-        
-        if (playerIndex !== -1) {
-          // Player still exists in the game (rare case)
-          const player = games[gameId].players[playerIndex];
-          
-          // Update the player's socket ID
-          games[gameId].players[playerIndex].id = socket.id;
-          
-          // Join the game room
-          socket.join(gameId);
-          
-          // Send the updated game state to the reconnected player
-          socket.emit('gameJoined', { 
-            gameId, 
-            playerId: socket.id, 
-            sessionId,
-            reconnected: true // Flag to indicate this was a reconnection
-          });
-          
-          // Make sure to send the full game state
-          socket.emit('updateGame', games[gameId]);
-          
-          // Notify other players about the reconnection
-          socket.to(gameId).emit('playerReconnected', { 
-            playerId: socket.id,
-            username: player.username
-          });
-          
-          console.log(`Player ${username} successfully reconnected to game ${gameId}`);
-          return;
-        } else {
-          console.log(`Player not found in game ${gameId}, adding them back as a new player`);
-          
-          // If the player wasn't found but the game exists, they were removed
-          // Let's add them back to the game as a new player
-          if (games[gameId].status !== 'finished') {
-            console.log(`Adding ${username} back to game ${gameId} as a new player`);
-            
-            // Add the player back to the game
-            games[gameId].players.push({
-              id: socket.id,
-              username,
-              isHost: games[gameId].players.length === 0, // Make them host if no players left
-              correctPredictions: 0,
-              totalPredictions: 0,
-              sessionId
-            });
-            
-            // Join the game room
-            socket.join(gameId);
-            
-            // Send the updated game state to the reconnected player
-            socket.emit('gameJoined', { 
-              gameId, 
-              playerId: socket.id, 
-              sessionId,
-              reconnected: true
-            });
-            
-            // Make sure to send the full game state
-            socket.emit('updateGame', games[gameId]);
-            
-            // Notify other players about the new player
-            socket.to(gameId).emit('playerJoined', { 
-              playerId: socket.id,
-              username
-            });
-            
-            io.to(gameId).emit('updateGame', games[gameId]);
-            
-            console.log(`Player ${username} added back to game ${gameId}`);
-            return;
-          }
-        }
-      } else {
-        console.log(`Game ${gameId} not found for session ${sessionId}`);
-      }
+    if (!sessionId) {
+      console.log(`No session ID provided for reconnection attempt by ${username}`);
+      socket.emit('reconnectFailed');
+      return;
     }
     
-    // If reconnection failed, inform the client
-    console.log(`Reconnection failed for session ${sessionId}`);
-    socket.emit('reconnectFailed');
+    if (!playerSessions[sessionId]) {
+      console.log(`Session ${sessionId} not found for ${username}`);
+      socket.emit('reconnectFailed');
+      return;
+    }
+    
+    const session = playerSessions[sessionId];
+    const gameId = session.gameId;
+    const oldSocketId = session.socketId;
+    
+    console.log(`Found session for ${username} in game ${gameId}, old socket: ${oldSocketId}`);
+    
+    // Update the session with the new socket ID
+    playerSessions[sessionId].socketId = socket.id;
+    playerSessions[sessionId].lastActive = Date.now();
+    
+    // If the game exists, try to add the player back
+    if (!games[gameId]) {
+      console.log(`Game ${gameId} not found for session ${sessionId}`);
+      socket.emit('reconnectFailed');
+      return;
+    }
+    
+    // First try to find by old socket ID (unlikely since we now remove players on disconnect)
+    let playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
+    
+    // If not found by old socket ID, try to find by session ID
+    if (playerIndex === -1) {
+      playerIndex = games[gameId].players.findIndex(p => p.sessionId === sessionId);
+    }
+    
+    if (playerIndex !== -1) {
+      // Player still exists in the game (rare case)
+      const player = games[gameId].players[playerIndex];
+      
+      // Update the player's socket ID
+      games[gameId].players[playerIndex].id = socket.id;
+      
+      // Join the game room
+      socket.join(gameId);
+      
+      // Send the updated game state to the reconnected player
+      socket.emit('gameJoined', { 
+        gameId, 
+        playerId: socket.id, 
+        sessionId,
+        reconnected: true // Flag to indicate this was a reconnection
+      });
+      
+      // Make sure to send the full game state
+      socket.emit('updateGame', games[gameId]);
+      
+      // Notify other players about the reconnection
+      socket.to(gameId).emit('playerReconnected', { 
+        playerId: socket.id,
+        username: player.username
+      });
+      
+      console.log(`Player ${username} successfully reconnected to game ${gameId}`);
+      return;
+    } else {
+      console.log(`Player not found in game ${gameId}, adding them back as a new player`);
+      
+      // If the player wasn't found but the game exists, they were removed
+      // Let's add them back to the game as a new player
+      if (games[gameId].status !== 'finished') {
+        console.log(`Adding ${username} back to game ${gameId} as a new player`);
+        
+        // Add the player back to the game
+        games[gameId].players.push({
+          id: socket.id,
+          username,
+          isHost: games[gameId].players.length === 0, // Make them host if no players left
+          correctPredictions: 0,
+          totalPredictions: 0,
+          sessionId
+        });
+        
+        // Join the game room
+        socket.join(gameId);
+        
+        // Send the updated game state to the reconnected player
+        socket.emit('gameJoined', { 
+          gameId, 
+          playerId: socket.id, 
+          sessionId,
+          reconnected: true
+        });
+        
+        // Make sure to send the full game state
+        socket.emit('updateGame', games[gameId]);
+        
+        // Notify other players about the new player
+        socket.to(gameId).emit('playerJoined', { 
+          playerId: socket.id,
+          username
+        });
+        
+        io.to(gameId).emit('updateGame', games[gameId]);
+        
+        console.log(`Player ${username} added back to game ${gameId}`);
+        return;
+      } else {
+        console.log(`Game ${gameId} is finished, cannot add player back`);
+        socket.emit('reconnectFailed');
+        return;
+      }
+    }
   });
   
   // Create a new game

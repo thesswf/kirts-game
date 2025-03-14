@@ -1049,12 +1049,42 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Check for saved session on initial load
+  useEffect(() => {
+    const checkSavedSession = () => {
+      const savedSession = localStorage.getItem('cardGameSession');
+      if (savedSession) {
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.username && session.sessionId && session.gameId) {
+            console.log('Found saved session on initial load:', session);
+            
+            // Set the state from the saved session
+            setUsername(session.username);
+            setGameId(session.gameId);
+            setSessionId(session.sessionId);
+            
+            // The socket connection and game state will be handled by the socket connection handler
+          }
+        } catch (error) {
+          console.error('Error parsing saved session on initial load:', error);
+          localStorage.removeItem('cardGameSession');
+        }
+      }
+    };
+    
+    checkSavedSession();
+  }, []);
+
   // Initialize socket connection
   const socket = useMemo(() => {
     const newSocket = io(SOCKET_SERVER_URL, {
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      autoConnect: true
     });
     
     // Save the socket instance for cleanup
@@ -1074,12 +1104,23 @@ function App() {
           const session = JSON.parse(savedSession);
           if (session.username && session.sessionId && session.gameId) {
             console.log('Found saved session, attempting to reconnect:', session);
-            setNotification({
-              message: `Reconnecting to game as ${session.username}...`,
-              type: 'info'
-            });
             
-            // Attempt to reconnect with the saved session
+            // Set the username from the saved session
+            setUsername(session.username);
+            
+            // Show reconnection notification after a short delay
+            // This prevents flickering if reconnection is quick
+            setTimeout(() => {
+              // Only show notification if we're still not reconnected
+              if (!gameState) {
+                setNotification({
+                  message: `Reconnecting to game as ${session.username}...`,
+                  type: 'info'
+                });
+              }
+            }, 500);
+            
+            // Attempt to reconnect with the saved session immediately
             socket.emit('reconnect', {
               username: session.username,
               sessionId: session.sessionId
@@ -1099,9 +1140,26 @@ function App() {
       setPlayerId(data.playerId);
       setSessionId(data.sessionId);
       
-      // Save session data to localStorage
+      // Get the username from the saved session if available
+      const savedSession = localStorage.getItem('cardGameSession');
+      let currentUsername = username;
+      
+      if (savedSession) {
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.username) {
+            currentUsername = session.username;
+            // Make sure the username state is updated
+            setUsername(currentUsername);
+          }
+        } catch (error) {
+          console.error('Error parsing saved session:', error);
+        }
+      }
+      
+      // Save session data to localStorage with the correct username
       const sessionData = {
-        username: username,
+        username: currentUsername,
         sessionId: data.sessionId,
         gameId: data.gameId
       };
@@ -1162,7 +1220,7 @@ function App() {
       socket.off('error');
       socket.off('disconnect');
     };
-  }, [socket, username]);
+  }, [socket, username, gameState]);
 
   // Handle game updates
   useEffect(() => {
@@ -1297,6 +1355,25 @@ function App() {
     if (!gameId) return;
     socket.emit('makePrediction', { gameId, prediction });
   };
+
+  // Save session before page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Make sure the session is saved with the most up-to-date information
+      if (username && sessionId && gameId) {
+        const sessionData = {
+          username,
+          sessionId,
+          gameId
+        };
+        console.log('Saving session before page unload:', sessionData);
+        localStorage.setItem('cardGameSession', JSON.stringify(sessionData));
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [username, sessionId, gameId]);
 
   return (
     <Container maxW="container.lg" centerContent py={4}>
