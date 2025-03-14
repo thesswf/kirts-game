@@ -34,6 +34,9 @@ const SESSION_TIMEOUT = 24 * 60 * 60 * 1000;
 // Store disconnected players temporarily to allow for quick reconnection
 let disconnectedPlayers = {};
 
+// Increase timeout for disconnected players to 2 minutes (120 seconds)
+const DISCONNECTED_PLAYER_TIMEOUT = 120000;
+
 // Card values from lowest to highest
 const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const cardSuits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -138,7 +141,7 @@ io.on('connection', (socket) => {
   
   // Check if this is a reconnection
   socket.on('reconnect', ({ username, sessionId }) => {
-    console.log(`Reconnection attempt for session ${sessionId} by ${username}`);
+    console.log(`Reconnection attempt for session ${sessionId} by ${username} with socket ${socket.id}`);
     
     if (!sessionId) {
       console.log(`No session ID provided for reconnection attempt by ${username}`);
@@ -216,6 +219,70 @@ io.on('connection', (socket) => {
     // If not in disconnectedPlayers, check regular sessions
     if (!playerSessions[sessionId]) {
       console.log(`Session ${sessionId} not found for ${username}`);
+      
+      // Try to find the game by username as a last resort
+      let foundGame = null;
+      let foundGameId = null;
+      
+      for (const gid in games) {
+        const game = games[gid];
+        const playerWithSameName = game.players.find(p => p.username === username);
+        if (playerWithSameName) {
+          foundGame = game;
+          foundGameId = gid;
+          break;
+        }
+      }
+      
+      if (foundGame) {
+        console.log(`Found game ${foundGameId} with player ${username}, creating new session`);
+        
+        // Create a new session
+        const newSessionId = generateSessionId();
+        playerSessions[newSessionId] = {
+          socketId: socket.id,
+          username,
+          gameId: foundGameId,
+          lastActive: Date.now()
+        };
+        
+        // Add player back to the game
+        foundGame.players.push({
+          id: socket.id,
+          username,
+          isHost: false, // Don't make them host
+          correctPredictions: 0,
+          totalPredictions: 0,
+          sessionId: newSessionId
+        });
+        
+        // Join the game room
+        socket.join(foundGameId);
+        
+        // Send the updated game state to the reconnected player
+        socket.emit('gameJoined', { 
+          gameId: foundGameId, 
+          playerId: socket.id, 
+          sessionId: newSessionId,
+          reconnected: true
+        });
+        
+        // Make sure to send the full game state
+        socket.emit('updateGame', foundGame);
+        
+        // Notify other players about the reconnection
+        socket.to(foundGameId).emit('playerJoined', { 
+          playerId: socket.id,
+          username
+        });
+        
+        // Update the game state for all players
+        io.to(foundGameId).emit('updateGame', foundGame);
+        
+        console.log(`Player ${username} added to game ${foundGameId} with new session ${newSessionId}`);
+        return;
+      }
+      
       socket.emit('reconnectFailed');
       return;
     }
@@ -243,6 +310,11 @@ io.on('connection', (socket) => {
     // If not found by old socket ID, try to find by session ID
     if (playerIndex === -1) {
       playerIndex = games[gameId].players.findIndex(p => p.sessionId === sessionId);
+    }
+    
+    // If not found by session ID, try to find by username
+    if (playerIndex === -1) {
+      playerIndex = games[gameId].players.findIndex(p => p.username === username);
     }
     
     if (playerIndex !== -1) {
@@ -439,12 +511,12 @@ io.on('connection', (socket) => {
           playerIndex
         };
         
-        console.log(`Stored player ${player.username} data for quick reconnection`);
+        console.log(`Stored player ${player.username} data for quick reconnection with timeout ${DISCONNECTED_PLAYER_TIMEOUT}ms`);
         
         // Don't delete the session immediately, let it exist for reconnection
         // We'll clean it up after a timeout if they don't reconnect
         setTimeout(() => {
-          // If the player hasn't reconnected after 30 seconds, clean up their session
+          // If the player hasn't reconnected after the timeout, clean up their session
           if (disconnectedPlayers[playerSessionId]) {
             console.log(`Player ${player.username} did not reconnect within timeout, cleaning up session`);
             delete disconnectedPlayers[playerSessionId];
@@ -457,7 +529,7 @@ io.on('connection', (socket) => {
               }
             });
           }
-        }, 30000); // 30 second timeout
+        }, DISCONNECTED_PLAYER_TIMEOUT); // Use the longer timeout
       }
       
       // Remove the player from the game immediately
@@ -528,12 +600,12 @@ io.on('connection', (socket) => {
             playerIndex
           };
           
-          console.log(`Stored player ${player.username} data for quick reconnection`);
+          console.log(`Stored player ${player.username} data for quick reconnection with timeout ${DISCONNECTED_PLAYER_TIMEOUT}ms`);
           
           // Don't delete the session immediately, let it exist for reconnection
           // We'll clean it up after a timeout if they don't reconnect
           setTimeout(() => {
-            // If the player hasn't reconnected after 30 seconds, clean up their session
+            // If the player hasn't reconnected after the timeout, clean up their session
             if (disconnectedPlayers[playerSessionId]) {
               console.log(`Player ${player.username} did not reconnect within timeout, cleaning up session`);
               delete disconnectedPlayers[playerSessionId];
@@ -546,7 +618,7 @@ io.on('connection', (socket) => {
                 }
               });
             }
-          }, 30000); // 30 second timeout
+          }, DISCONNECTED_PLAYER_TIMEOUT); // Use the longer timeout
         }
         
         // Remove the player from the game immediately
@@ -815,6 +887,15 @@ setInterval(() => {
     if (now - session.lastActive > SESSION_TIMEOUT) {
       console.log(`Removing inactive session ${sessionId} for ${session.username}`);
       delete playerSessions[sessionId];
+    }
+  }
+  
+  // Clean up stale disconnected players
+  for (const sessionId in disconnectedPlayers) {
+    const disconnectedPlayer = disconnectedPlayers[sessionId];
+    if (now - disconnectedPlayer.disconnectedAt > DISCONNECTED_PLAYER_TIMEOUT) {
+      console.log(`Cleaning up stale disconnected player ${disconnectedPlayer.player.username} with session ${sessionId}`);
+      delete disconnectedPlayers[sessionId];
     }
   }
   

@@ -1076,15 +1076,16 @@ function App() {
     checkSavedSession();
   }, []);
 
-  // Initialize socket connection
+  // Initialize socket connection with more aggressive reconnection settings
   const socket = useMemo(() => {
     const newSocket = io(SOCKET_SERVER_URL, {
-      reconnectionAttempts: 20,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 30, // Increase from 20 to 30
+      reconnectionDelay: 500, // Decrease from 1000 to 500ms for faster reconnection
+      reconnectionDelayMax: 2000, // Decrease from 5000 to 2000ms
       timeout: 20000,
       transports: ['websocket', 'polling'],
-      autoConnect: true
+      autoConnect: true,
+      forceNew: false // Don't force a new connection
     });
     
     // Save the socket instance for cleanup
@@ -1095,7 +1096,7 @@ function App() {
   useEffect(() => {
     // Check for saved session on connection
     const handleConnect = () => {
-      console.log('Connected to server');
+      console.log('Connected to server with socket ID:', socket.id);
       
       // Check if we have a saved session
       const savedSession = localStorage.getItem('cardGameSession');
@@ -1107,6 +1108,8 @@ function App() {
             
             // Set the username from the saved session
             setUsername(session.username);
+            setGameId(session.gameId);
+            setSessionId(session.sessionId);
             
             // Show reconnection notification after a short delay
             // This prevents flickering if reconnection is quick
@@ -1118,9 +1121,10 @@ function App() {
                   type: 'info'
                 });
               }
-            }, 500);
+            }, 300);
             
             // Attempt to reconnect with the saved session immediately
+            console.log('Emitting reconnect event with session data');
             socket.emit('reconnect', {
               username: session.username,
               sessionId: session.sessionId
@@ -1135,7 +1139,7 @@ function App() {
 
     // Handle successful reconnection
     const handleGameJoined = (data: any) => {
-      console.log('Game joined:', data);
+      console.log('Game joined/created event received:', data);
       setGameId(data.gameId);
       setPlayerId(data.playerId);
       setSessionId(data.sessionId);
@@ -1163,6 +1167,7 @@ function App() {
         sessionId: data.sessionId,
         gameId: data.gameId
       };
+      console.log('Saving session data to localStorage:', sessionData);
       localStorage.setItem('cardGameSession', JSON.stringify(sessionData));
       
       if (data.reconnected) {
@@ -1180,11 +1185,37 @@ function App() {
         message: 'Failed to reconnect to game. Please join again.',
         type: 'error'
       });
-      localStorage.removeItem('cardGameSession');
-      setGameId('');
-      setPlayerId('');
-      setSessionId('');
-      setGameState(null);
+      
+      // Don't remove the session data immediately, try one more time
+      setTimeout(() => {
+        const savedSession = localStorage.getItem('cardGameSession');
+        if (savedSession) {
+          try {
+            const session = JSON.parse(savedSession);
+            if (session.username && session.sessionId && session.gameId) {
+              console.log('Trying reconnection one more time with session:', session);
+              socket.emit('reconnect', {
+                username: session.username,
+                sessionId: session.sessionId
+              });
+            }
+          } catch (error) {
+            console.error('Error parsing saved session on retry:', error);
+            localStorage.removeItem('cardGameSession');
+          }
+        }
+      }, 1000);
+      
+      // Only clear UI state after a delay to give the retry a chance
+      setTimeout(() => {
+        if (!gameState) {
+          localStorage.removeItem('cardGameSession');
+          setGameId('');
+          setPlayerId('');
+          setSessionId('');
+          setGameState(null);
+        }
+      }, 3000);
     };
 
     // Set up event listeners
@@ -1209,6 +1240,17 @@ function App() {
         message: 'Disconnected from server. Attempting to reconnect...',
         type: 'warning'
       });
+      
+      // Make sure session data is saved when disconnected
+      if (username && sessionId && gameId) {
+        const sessionData = {
+          username,
+          sessionId,
+          gameId
+        };
+        console.log('Saving session data on disconnect:', sessionData);
+        localStorage.setItem('cardGameSession', JSON.stringify(sessionData));
+      }
     });
 
     // Cleanup function
