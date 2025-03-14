@@ -158,6 +158,7 @@ interface CardProps {
   isNewlyDealt?: boolean;
   lastPredictionCorrect?: boolean;
   cards?: Array<{value: string, suit: string}>;
+  isRevived?: boolean;
 }
 
 const Card: React.FC<CardProps> = ({ 
@@ -170,7 +171,8 @@ const Card: React.FC<CardProps> = ({
   showLastCard = false,
   isNewlyDealt = false,
   lastPredictionCorrect,
-  cards = []
+  cards = [],
+  isRevived = false
 }) => {
   // Determine card color based on suit
   const isRed = suit === 'hearts' || suit === 'diamonds';
@@ -189,7 +191,7 @@ const Card: React.FC<CardProps> = ({
   
   const suitSymbol = getSuitSymbol(suit);
   
-  // Determine animation class based on prediction result
+  // Determine animation class based on prediction result or revival
   let animationClass = '';
   if (isNewlyDealt) {
     if (lastPredictionCorrect === true) {
@@ -197,6 +199,8 @@ const Card: React.FC<CardProps> = ({
     } else if (lastPredictionCorrect === false) {
       animationClass = 'incorrect-prediction-animation';
     }
+  } else if (isRevived) {
+    animationClass = 'revived-pile-animation';
   }
   
   return (
@@ -621,6 +625,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
               isNewlyDealt={pile.isNewlyDealt}
               lastPredictionCorrect={pile.lastPredictionCorrect}
               cards={pile.cards}
+              isRevived={pile.isRevived}
             />
             
             {/* Add red slash for inactive piles */}
@@ -816,6 +821,35 @@ function App() {
       setPlayerId(playerId);
     });
 
+    // Pile revived event
+    socket.on('pileRevived', ({ pileIndex }) => {
+      // Show a notification or animation when a pile is revived
+      if (gameState && gameState.piles[pileIndex]) {
+        // Create a temporary copy of the game state
+        const updatedGameState = { ...gameState };
+        
+        // Add a special flag to the revived pile to trigger animation
+        updatedGameState.piles[pileIndex] = {
+          ...updatedGameState.piles[pileIndex],
+          isRevived: true
+        };
+        
+        // Update the game state to show the revival animation
+        setGameState(updatedGameState);
+        
+        // Remove the revival flag after animation completes
+        setTimeout(() => {
+          if (gameState) {
+            const resetGameState = { ...gameState };
+            if (resetGameState.piles[pileIndex]) {
+              resetGameState.piles[pileIndex].isRevived = false;
+              setGameState(resetGameState);
+            }
+          }
+        }, 2500); // 2.5 seconds for animation
+      }
+    });
+
     // Error handling
     socket.on('error', (errorMessage: string) => {
       alert(`Error: ${errorMessage}`);
@@ -825,9 +859,10 @@ function App() {
       socket.off('updateGame');
       socket.off('gameCreated');
       socket.off('gameJoined');
+      socket.off('pileRevived');
       socket.off('error');
     };
-  }, [socket]);
+  }, [socket, gameState]);
 
   // Create a new game
   const createGame = (username: string) => {
@@ -886,10 +921,10 @@ function App() {
   };
 
   return (
-    <Box minH="100vh" bg="gray.50" p={4}>
-      <Stack direction="column" align="center" style={{ gap: '2rem' }}>
+    <Box minH="100vh" bg="gray.50" p={3}>
+      <Stack direction="column" align="center" style={{ gap: '1.5rem' }}>
         <Heading as="h1" size="xl" color="teal.500">
-          Kirt's Favorite Game
+          Kirt's Game
         </Heading>
         
         {!gameState && (

@@ -272,6 +272,19 @@ io.on('connection', (socket) => {
       // Since the prediction was correct, we're not in the first turn after a pile death
       game.firstTurnAfterPileDeath = false;
       
+      // If prediction was "equal" and correct, revive a dead pile if available
+      if (prediction === 'equal') {
+        const deadPiles = game.piles.filter(pile => !pile.active);
+        if (deadPiles.length > 0) {
+          // Revive the first dead pile
+          const deadPileIndex = game.piles.findIndex(pile => !pile.active);
+          game.piles[deadPileIndex].active = true;
+          
+          // Emit a special event for the revived pile
+          io.to(gameId).emit('pileRevived', { pileIndex: deadPileIndex });
+        }
+      }
+      
       // Note: We're NOT resetting currentPileIndex here, so it stays selected for the next player
       
       // Check if the game is over (all piles inactive)

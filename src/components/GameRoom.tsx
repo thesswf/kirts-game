@@ -184,7 +184,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
     <Box 
       w="100%" 
       maxW="800px" 
-      p={6} 
+      p={4} 
       borderRadius="lg" 
       boxShadow="md" 
       bg="white"
@@ -192,7 +192,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
       borderColor="gray.200"
     >
       {/* Game Status */}
-      <Flex justify="space-between" align="center" mb={6}>
+      <Flex justify="space-between" align="center" mb={4}>
         <Box>
           <Text fontSize="sm" color="gray.500">Playing as</Text>
           <Text fontWeight="bold">{username}</Text>
@@ -222,8 +222,8 @@ const GameRoom: React.FC<GameRoomProps> = ({
           {renderCardGrid()}
           {renderPredictionControls()}
           
-          <Box mt={6}>
-            <Heading size="sm" mb={2}>Players</Heading>
+          <Box mt={4}>
+            <Heading size="sm" mb={1}>Players</Heading>
             <PlayerList 
               players={gameState.players} 
               currentPlayerId={playerId}

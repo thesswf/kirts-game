@@ -8,7 +8,15 @@ import {
   VStack,
   Heading,
   Text,
-  Flex
+  Flex,
+  SimpleGrid,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
+  ModalFooter
 } from '@chakra-ui/react';
 
 interface HomeProps {
@@ -20,10 +28,15 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
   const [username, setUsername] = useState('');
   const [gameId, setGameId] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [showJoinGame, setShowJoinGame] = useState(false);
+  const [gameCode, setGameCode] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
 
   const handleCreateGame = (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim()) {
+      setIsCreating(true);
       createGame(username.trim());
     }
   };
@@ -31,6 +44,7 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
   const handleJoinGame = (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim() && gameId.trim()) {
+      setIsJoining(true);
       joinGame(gameId.trim().toUpperCase(), username.trim());
     }
   };
@@ -39,98 +53,74 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
     <Box 
       w="100%" 
       maxW="500px" 
-      p={6} 
+      p={4} 
       borderRadius="lg" 
       boxShadow="md" 
       bg="white"
       borderWidth="1px"
       borderColor="gray.200"
     >
-      <VStack align="stretch" style={{ gap: '1.5rem' }}>
-        <Heading as="h2" size="lg" textAlign="center" color="teal.500">
-          Welcome to Kirt's Favorite Game
-        </Heading>
+      <VStack spacing={4} align="stretch">
+        <Heading textAlign="center" size="lg" mb={2}>Kirt's Game</Heading>
         
         <Text textAlign="center">
           Play with friends on any device with a browser!
         </Text>
         
-        <Box>
-          <Flex mb={4}>
-            <Button 
-              flex={1} 
-              onClick={() => setActiveTab('create')}
-              colorScheme={activeTab === 'create' ? 'teal' : 'gray'}
-              mr={2}
-            >
-              Create Game
-            </Button>
-            <Button 
-              flex={1} 
-              onClick={() => setActiveTab('join')}
-              colorScheme={activeTab === 'join' ? 'teal' : 'gray'}
-            >
-              Join Game
-            </Button>
-          </Flex>
-          
-          {activeTab === 'create' ? (
-            <form onSubmit={handleCreateGame}>
-              <VStack style={{ gap: '1rem' }}>
-                <FormControl isRequired>
-                  <FormLabel>Your Name</FormLabel>
-                  <Input 
-                    placeholder="Enter your name" 
-                    value={username} 
-                    onChange={(e) => setUsername(e.target.value)} 
-                  />
-                </FormControl>
-                
-                <Button 
-                  type="submit" 
-                  colorScheme="teal" 
-                  size="lg" 
-                  width="full"
-                  isDisabled={!username.trim()}
-                >
-                  Create New Game
-                </Button>
-              </VStack>
-            </form>
-          ) : (
-            <form onSubmit={handleJoinGame}>
-              <VStack style={{ gap: '1rem' }}>
-                <FormControl isRequired>
-                  <FormLabel>Your Name</FormLabel>
-                  <Input 
-                    placeholder="Enter your name" 
-                    value={username} 
-                    onChange={(e) => setUsername(e.target.value)} 
-                  />
-                </FormControl>
-                
-                <FormControl isRequired>
-                  <FormLabel>Game Code</FormLabel>
-                  <Input 
-                    placeholder="Enter game code" 
-                    value={gameId} 
-                    onChange={(e) => setGameId(e.target.value.toUpperCase())} 
-                  />
-                </FormControl>
-                
-                <Button 
-                  type="submit" 
-                  colorScheme="teal" 
-                  size="lg" 
-                  width="full"
-                  isDisabled={!username.trim() || !gameId.trim()}
-                >
-                  Join Game
-                </Button>
-              </VStack>
-            </form>
-          )}
-        </Box>
+        <FormControl isRequired>
+          <FormLabel htmlFor="username">Your Name</FormLabel>
+          <Input 
+            id="username" 
+            placeholder="Enter your name" 
+            value={username} 
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </FormControl>
+        
+        <SimpleGrid columns={2} spacing={3}>
+          <Button 
+            colorScheme="blue" 
+            onClick={handleCreateGame}
+            isLoading={isCreating}
+          >
+            Create Game
+          </Button>
+          <Button 
+            colorScheme="green" 
+            onClick={() => setShowJoinGame(true)}
+          >
+            Join Game
+          </Button>
+        </SimpleGrid>
+        
+        <Modal isOpen={showJoinGame} onClose={() => setShowJoinGame(false)}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Join Game</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody pb={6}>
+              <FormControl>
+                <FormLabel>Game Code</FormLabel>
+                <Input 
+                  placeholder="Enter game code" 
+                  value={gameCode} 
+                  onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                />
+              </FormControl>
+            </ModalBody>
+            <ModalFooter>
+              <Button 
+                colorScheme="blue" 
+                mr={3} 
+                onClick={handleJoinGame}
+                isLoading={isJoining}
+              >
+                Join
+              </Button>
+              <Button onClick={() => setShowJoinGame(false)}>Cancel</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       </VStack>
     </Box>
   );

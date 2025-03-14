@@ -42,7 +42,7 @@ const PlayerList: React.FC<PlayerListProps> = ({
   const orderedPlayers = getOrderedPlayers();
   
   return (
-    <VStack spacing={2} align="stretch">
+    <VStack spacing={1} align="stretch">
       {orderedPlayers.map((player, index) => {
         const isCurrentUser = player.id === currentPlayerId;
         const isCurrentTurn = index === 0 && currentTurnIndex !== undefined;
@@ -51,7 +51,7 @@ const PlayerList: React.FC<PlayerListProps> = ({
         return (
           <Box 
             key={player.id}
-            p={2}
+            p={1.5}
             borderRadius="md"
             bg={isCurrentTurn ? 'teal.50' : 'white'}
             borderWidth="1px"
@@ -70,13 +70,13 @@ const PlayerList: React.FC<PlayerListProps> = ({
               
               <Flex>
                 {player.isHost && (
-                  <Badge colorScheme="purple" mr={2}>
+                  <Badge colorScheme="purple" mr={2} fontSize="xs">
                     Host
                   </Badge>
                 )}
                 
                 {isCurrentTurn && (
-                  <Badge colorScheme="green">
+                  <Badge colorScheme="green" fontSize="xs">
                     Current Turn
                   </Badge>
                 )}
