@@ -425,11 +425,26 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
   currentPlayerId,
   currentTurnIndex 
 }) => {
+  // Sort players to put the current player at the top
+  const sortedPlayers = [...players].sort((a, b) => {
+    // If player a is the current turn player, they should come first
+    if (players.indexOf(a) === currentTurnIndex) return -1;
+    // If player b is the current turn player, they should come first
+    if (players.indexOf(b) === currentTurnIndex) return 1;
+    // Otherwise maintain original order
+    return players.indexOf(a) - players.indexOf(b);
+  });
+
   return (
     <Stack direction="column" align="stretch" style={{ gap: '0.5rem' }}>
-      {players.map((player: Player, index: number) => {
+      {sortedPlayers.map((player: Player, index: number) => {
         const isCurrentUser = player.id === currentPlayerId;
-        const isCurrentTurn = currentTurnIndex !== undefined && index === currentTurnIndex;
+        const isCurrentTurn = players.indexOf(player) === currentTurnIndex;
+        
+        // Calculate accuracy percentage
+        const accuracyPercentage = player.totalPredictions && player.totalPredictions > 0
+          ? Math.round((player.correctPredictions || 0) / player.totalPredictions * 100)
+          : 0;
         
         return (
           <Box 
@@ -447,6 +462,21 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
               </Text>
               
               <Flex>
+                {/* Accuracy percentage */}
+                {player.totalPredictions && player.totalPredictions > 0 && (
+                  <Box 
+                    bg="blue.100" 
+                    color="blue.800" 
+                    px={2} 
+                    py={1} 
+                    borderRadius="md" 
+                    fontSize="xs"
+                    mr={2}
+                  >
+                    {accuracyPercentage}% Accuracy
+                  </Box>
+                )}
+                
                 {player.isHost && (
                   <Box 
                     bg="purple.100" 
