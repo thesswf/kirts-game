@@ -1310,7 +1310,12 @@ function App() {
   const handleExitToLobby = () => {
     if (gameId) {
       socket.emit('leaveGame', { gameId });
-      localStorage.removeItem('cardGameSession');
+      
+      // Don't remove the session data immediately
+      // Let the server handle session cleanup after timeout
+      // localStorage.removeItem('cardGameSession');
+      
+      // Just clear the UI state
       setGameId('');
       setPlayerId('');
       setSessionId('');

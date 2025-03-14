@@ -31,6 +31,9 @@ let playerSessions = {};
 // Set a longer timeout for inactive sessions (24 hours in milliseconds)
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000;
 
+// Store disconnected players temporarily to allow for quick reconnection
+let disconnectedPlayers = {};
+
 // Card values from lowest to highest
 const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const cardSuits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -143,6 +146,74 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // Check if this is a recently disconnected player
+    if (disconnectedPlayers[sessionId]) {
+      console.log(`Found recently disconnected player ${username} with session ${sessionId}`);
+      
+      const { player, gameId, disconnectedAt } = disconnectedPlayers[sessionId];
+      
+      // Check if the game still exists
+      if (!games[gameId]) {
+        console.log(`Game ${gameId} no longer exists for session ${sessionId}`);
+        socket.emit('reconnectFailed');
+        delete disconnectedPlayers[sessionId];
+        return;
+      }
+      
+      // Update the session with the new socket ID
+      if (playerSessions[sessionId]) {
+        playerSessions[sessionId].socketId = socket.id;
+        playerSessions[sessionId].lastActive = Date.now();
+      } else {
+        // Recreate the session if it was somehow lost
+        playerSessions[sessionId] = {
+          socketId: socket.id,
+          username,
+          gameId,
+          lastActive: Date.now()
+        };
+      }
+      
+      // Add the player back to the game
+      const updatedPlayer = {
+        ...player,
+        id: socket.id, // Update with new socket ID
+      };
+      
+      // Add the player back to the game
+      games[gameId].players.push(updatedPlayer);
+      
+      // Join the game room
+      socket.join(gameId);
+      
+      // Send the updated game state to the reconnected player
+      socket.emit('gameJoined', { 
+        gameId, 
+        playerId: socket.id, 
+        sessionId,
+        reconnected: true
+      });
+      
+      // Make sure to send the full game state
+      socket.emit('updateGame', games[gameId]);
+      
+      // Notify other players about the reconnection
+      socket.to(gameId).emit('playerReconnected', { 
+        playerId: socket.id,
+        username: player.username
+      });
+      
+      // Update the game state for all players
+      io.to(gameId).emit('updateGame', games[gameId]);
+      
+      // Remove from disconnected players since they've reconnected
+      delete disconnectedPlayers[sessionId];
+      
+      console.log(`Player ${username} successfully reconnected to game ${gameId}`);
+      return;
+    }
+    
+    // If not in disconnectedPlayers, check regular sessions
     if (!playerSessions[sessionId]) {
       console.log(`Session ${sessionId} not found for ${username}`);
       socket.emit('reconnectFailed');
@@ -356,16 +427,41 @@ io.on('connection', (socket) => {
       const player = game.players[playerIndex];
       console.log(`Player ${player.username} is leaving game ${gameId}`);
       
+      // Store the player's session ID before removing them
+      const playerSessionId = player.sessionId;
+      
+      // Store the player data temporarily to allow for quick reconnection
+      if (playerSessionId) {
+        disconnectedPlayers[playerSessionId] = {
+          player: { ...player },
+          gameId,
+          disconnectedAt: Date.now(),
+          playerIndex
+        };
+        
+        console.log(`Stored player ${player.username} data for quick reconnection`);
+        
+        // Don't delete the session immediately, let it exist for reconnection
+        // We'll clean it up after a timeout if they don't reconnect
+        setTimeout(() => {
+          // If the player hasn't reconnected after 30 seconds, clean up their session
+          if (disconnectedPlayers[playerSessionId]) {
+            console.log(`Player ${player.username} did not reconnect within timeout, cleaning up session`);
+            delete disconnectedPlayers[playerSessionId];
+            
+            // Now delete the session
+            Object.keys(playerSessions).forEach(sid => {
+              if (sid === playerSessionId) {
+                console.log(`Removing session ${sid} for player ${player.username} after timeout`);
+                delete playerSessions[sid];
+              }
+            });
+          }
+        }, 30000); // 30 second timeout
+      }
+      
       // Remove the player from the game immediately
       game.players.splice(playerIndex, 1);
-      
-      // Clean up the player's session
-      Object.keys(playerSessions).forEach(sid => {
-        if (playerSessions[sid].socketId === socket.id) {
-          console.log(`Removing session ${sid} for player ${player.username}`);
-          delete playerSessions[sid];
-        }
-      });
       
       // If no players left, remove the game
       if (game.players.length === 0) {
@@ -420,16 +516,41 @@ io.on('connection', (socket) => {
         const player = game.players[playerIndex];
         console.log(`Player ${player.username} disconnected from game ${gameId}`);
         
+        // Store the player's session ID before removing them
+        const playerSessionId = player.sessionId;
+        
+        // Store the player data temporarily to allow for quick reconnection
+        if (playerSessionId) {
+          disconnectedPlayers[playerSessionId] = {
+            player: { ...player },
+            gameId,
+            disconnectedAt: Date.now(),
+            playerIndex
+          };
+          
+          console.log(`Stored player ${player.username} data for quick reconnection`);
+          
+          // Don't delete the session immediately, let it exist for reconnection
+          // We'll clean it up after a timeout if they don't reconnect
+          setTimeout(() => {
+            // If the player hasn't reconnected after 30 seconds, clean up their session
+            if (disconnectedPlayers[playerSessionId]) {
+              console.log(`Player ${player.username} did not reconnect within timeout, cleaning up session`);
+              delete disconnectedPlayers[playerSessionId];
+              
+              // Now delete the session
+              Object.keys(playerSessions).forEach(sid => {
+                if (sid === playerSessionId) {
+                  console.log(`Removing session ${sid} for player ${player.username} after timeout`);
+                  delete playerSessions[sid];
+                }
+              });
+            }
+          }, 30000); // 30 second timeout
+        }
+        
         // Remove the player from the game immediately
         game.players.splice(playerIndex, 1);
-        
-        // Clean up the player's session
-        Object.keys(playerSessions).forEach(sid => {
-          if (playerSessions[sid].socketId === socket.id) {
-            console.log(`Removing session ${sid} for player ${player.username}`);
-            delete playerSessions[sid];
-          }
-        });
         
         // If no players left, remove the game
         if (game.players.length === 0) {
