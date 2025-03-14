@@ -1,67 +1,56 @@
-# Deploying Your Card Game to Render.com
+# Deploying to Render
 
-This guide provides step-by-step instructions for deploying your High-Low Card Game to Render.com, which offers a free tier perfect for this application.
+This guide explains how to deploy the Kirt's Favorite Game application to Render.
 
 ## Prerequisites
 
-1. A GitHub account
-2. Your card game code pushed to a GitHub repository
-3. A Render.com account (free)
+- A GitHub account with your repository pushed
+- A Render account (sign up at https://render.com)
 
-## Step 1: Prepare Your Application
+## Deployment Steps
 
-Before deploying, make sure your application is ready:
+### 1. Create a Web Service on Render
 
-1. Test your application locally using `npm run dev`
-2. Make sure all dependencies are listed in package.json
-3. Ensure your server.js file is properly configured to serve static files from the build directory
-4. Make sure you have a Procfile with the content: `web: node server.js`
-
-## Step 2: Create a Render Account
-
-1. Go to [Render.com](https://render.com/) and sign up for a free account
-2. Verify your email address
-
-## Step 3: Connect Your GitHub Repository
-
-1. In the Render dashboard, click "New" and select "Web Service"
-2. Connect your GitHub account if you haven't already
-3. Select the repository containing your card game
-
-## Step 4: Configure Your Web Service
-
-1. Fill in the following details:
-   - **Name**: high-low-card-game (or any name you prefer)
+1. Log in to your Render account
+2. Click on "New" and select "Web Service"
+3. Connect your GitHub repository
+4. Configure the service:
+   - **Name**: kirts-favorite-game (or your preferred name)
    - **Environment**: Node
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `node server.js`
-   - **Plan**: Free
+   - **Plan**: Free (or select a paid plan if needed)
 
-2. Add the following environment variable:
-   - `NODE_ENV`: `production`
+### 2. Environment Variables
 
-3. Click "Create Web Service"
+Add the following environment variables:
+- `NODE_ENV`: production
+- `PORT`: 10000 (Render will automatically set the PORT, but this is a fallback)
 
-## Step 5: Monitor the Deployment
+### 3. Auto-Deploy Settings
 
-1. Render will automatically build and deploy your application
-2. You can monitor the progress in the "Logs" tab
-3. Once the deployment is complete, you'll see a success message
+- Enable automatic deployments from the main branch
 
-## Step 6: Access Your Deployed Application
+### 4. Advanced Settings
 
-1. Render will provide you with a URL for your application (e.g., https://high-low-card-game.onrender.com)
-2. Open this URL in your browser to access your deployed card game
-3. Share this URL with your friends so they can join your game
+- Set the Node.js version to match your local environment (e.g., 18.x)
+
+## Accessing Your Deployed Application
+
+Once deployed, your application will be available at:
+`https://kirts-favorite-game.onrender.com` (or your custom subdomain)
 
 ## Troubleshooting
 
-If you encounter issues during deployment:
+If you encounter issues:
+1. Check the Render logs for error messages
+2. Verify that your server.js file correctly uses the PORT environment variable
+3. Ensure your client-side code connects to the correct server URL in production
 
-- Check the deployment logs for errors
-- Ensure all dependencies are properly listed in package.json
-- Verify that your server.js file is correctly configured to serve static files
-- Make sure your environment variables are set correctly
+## Important Notes
+
+- The free tier of Render may have some limitations and your service might spin down after periods of inactivity
+- The first deployment might take several minutes to complete
 
 ## Playing the Game
 
