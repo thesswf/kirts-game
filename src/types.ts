@@ -13,6 +13,7 @@ export interface Pile {
   active: boolean;
   isNewlyDealt: boolean;
   lastPredictionCorrect?: boolean;
+  isRevived?: boolean;
 }
 
 export interface Player {
