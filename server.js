@@ -335,6 +335,200 @@ io.on('connection', (socket) => {
     }
   });
   
+  // Start the game
+  socket.on('startGame', (gameId) => {
+    console.log(`Starting game ${gameId}`);
+    const game = games[gameId];
+    
+    if (!game) {
+      console.log(`Game ${gameId} not found`);
+      socket.emit('error', 'Game not found');
+      return;
+    }
+    
+    // Check if the player is the host
+    const player = game.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      console.log(`Player ${socket.id} is not the host of game ${gameId}`);
+      socket.emit('error', 'Only the host can start the game');
+      return;
+    }
+    
+    // Initialize the game
+    game.status = 'playing';
+    game.deck = shuffleDeck(createDeck());
+    game.piles = [];
+    game.currentPlayerIndex = 0;
+    game.currentPileIndex = null;
+    game.remainingCards = 43; // 52 - 9 initial cards
+    
+    // Deal 3 piles with 3 cards each
+    for (let i = 0; i < 3; i++) {
+      const pileCards = [];
+      for (let j = 0; j < 3; j++) {
+        pileCards.push({
+          ...game.deck.pop(),
+          id: `card-${i}-${j}`
+        });
+      }
+      game.piles.push({
+        cards: pileCards,
+        active: true,
+        isDead: false
+      });
+    }
+    
+    // Notify all players that the game has started
+    io.to(gameId).emit('updateGame', game);
+    console.log(`Game ${gameId} started with ${game.players.length} players`);
+  });
+  
+  // End the game
+  socket.on('endGame', (gameId) => {
+    console.log(`Ending game ${gameId}`);
+    const game = games[gameId];
+    
+    if (!game) {
+      console.log(`Game ${gameId} not found`);
+      socket.emit('error', 'Game not found');
+      return;
+    }
+    
+    // Check if the player is the host
+    const player = game.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      console.log(`Player ${socket.id} is not the host of game ${gameId}`);
+      socket.emit('error', 'Only the host can end the game');
+      return;
+    }
+    
+    // End the game
+    game.status = 'finished';
+    
+    // Notify all players that the game has ended
+    io.to(gameId).emit('updateGame', game);
+    console.log(`Game ${gameId} ended by host`);
+  });
+  
+  // Select a pile
+  socket.on('selectPile', ({ gameId, pileIndex }) => {
+    const game = games[gameId];
+    
+    if (!game || game.status !== 'playing') {
+      return;
+    }
+    
+    // Check if it's the player's turn
+    if (game.players[game.currentPlayerIndex].id !== socket.id) {
+      return;
+    }
+    
+    // Check if the pile is active
+    if (!game.piles[pileIndex].active) {
+      return;
+    }
+    
+    // Set the current pile
+    game.currentPileIndex = pileIndex;
+    
+    // Update the game state
+    io.to(gameId).emit('updateGame', game);
+  });
+  
+  // Make a prediction
+  socket.on('makePrediction', ({ gameId, prediction }) => {
+    const game = games[gameId];
+    
+    if (!game || game.status !== 'playing') {
+      return;
+    }
+    
+    // Check if it's the player's turn
+    if (game.players[game.currentPlayerIndex].id !== socket.id) {
+      return;
+    }
+    
+    // Check if a pile is selected
+    if (game.currentPileIndex === null) {
+      return;
+    }
+    
+    const pile = game.piles[game.currentPileIndex];
+    const currentCard = pile.cards[pile.cards.length - 1];
+    const newCard = {
+      ...game.deck.pop(),
+      id: `card-${game.currentPileIndex}-${pile.cards.length}`
+    };
+    
+    // Add the new card to the pile
+    pile.cards.push(newCard);
+    
+    // Check if the prediction was correct
+    const isCorrect = compareCards(currentCard, newCard, prediction);
+    
+    // Update player stats
+    const playerIndex = game.currentPlayerIndex;
+    game.players[playerIndex].totalPredictions++;
+    if (isCorrect) {
+      game.players[playerIndex].correctPredictions++;
+    }
+    
+    // Mark the pile as newly dealt for animation
+    pile.isNewlyDealt = true;
+    pile.lastPredictionCorrect = isCorrect;
+    
+    // If prediction was wrong, mark the pile as inactive
+    if (!isCorrect) {
+      pile.active = false;
+      pile.isDead = true;
+    }
+    
+    // Decrement remaining cards
+    game.remainingCards--;
+    
+    // Check if all piles are inactive
+    const allPilesInactive = game.piles.every(p => !p.active);
+    
+    // Check if the game is over (all piles inactive or deck empty)
+    if (allPilesInactive || game.remainingCards === 0) {
+      game.status = 'finished';
+      
+      // Find the player with the highest accuracy
+      let highestAccuracy = -1;
+      let winner = null;
+      
+      for (const player of game.players) {
+        if (player.totalPredictions > 0) {
+          const accuracy = player.correctPredictions / player.totalPredictions;
+          if (accuracy > highestAccuracy) {
+            highestAccuracy = accuracy;
+            winner = player;
+          }
+        }
+      }
+      
+      game.winner = winner ? winner.username : null;
+    } else {
+      // Move to the next player
+      game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+      game.currentPileIndex = null;
+    }
+    
+    // Update the game state
+    io.to(gameId).emit('updateGame', game);
+    
+    // Clear the newly dealt flag after a short delay
+    setTimeout(() => {
+      if (games[gameId]) {
+        games[gameId].piles.forEach(p => {
+          p.isNewlyDealt = false;
+          p.lastPredictionCorrect = undefined;
+        });
+        io.to(gameId).emit('updateGame', games[gameId]);
+      }
+    }, 2000);
+  });
+  
   // Rest of the socket event handlers...
 });
 

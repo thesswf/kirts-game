@@ -15,14 +15,9 @@ import {
   FormLabel, 
   useToast, 
   Badge,
-  Spacer,
-  IconButton,
-  useColorMode,
-  useColorModeValue,
-  Tooltip
+  Spacer
 } from '@chakra-ui/react';
 import { io, Socket } from 'socket.io-client';
-import { SunIcon, MoonIcon } from '@chakra-ui/icons';
 import './App.css';
 import GameRoom from './components/GameRoom';
 import Home from './components/Home';
@@ -1039,7 +1034,6 @@ function App() {
     width: window.innerWidth,
     height: window.innerHeight
   });
-  const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
 
   // Track window dimensions for Confetti
@@ -1307,16 +1301,10 @@ function App() {
     <Container maxW="container.lg" centerContent py={4}>
       {showConfetti && <Confetti width={windowDimensions.width} height={windowDimensions.height} recycle={false} numberOfPieces={500} />}
       
-      <Flex w="100%" justifyContent="space-between" alignItems="center" mb={4}>
-        <Heading as="h1" size="xl" color={useColorModeValue('blue.600', 'blue.300')}>
+      <Flex w="100%" justifyContent="center" alignItems="center" mb={4}>
+        <Heading as="h1" size="xl" color="blue.600">
           Kirt's Card Game
         </Heading>
-        <IconButton
-          aria-label="Toggle color mode"
-          icon={colorMode === 'light' ? <MoonIcon /> : <SunIcon />}
-          onClick={toggleColorMode}
-          variant="ghost"
-        />
       </Flex>
       
       {errorMessage && (
