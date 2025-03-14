@@ -53,41 +53,44 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
     <Box 
       w="100%" 
       maxW="500px" 
-      p={4} 
+      p={3} 
       borderRadius="lg" 
       boxShadow="md" 
       bg="white"
       borderWidth="1px"
       borderColor="gray.200"
     >
-      <VStack spacing={4} align="stretch">
-        <Heading textAlign="center" size="lg" mb={2}>Kirt's Game</Heading>
+      <VStack spacing={3} align="stretch">
+        <Heading textAlign="center" size="lg" mb={1}>Kirt's Game</Heading>
         
-        <Text textAlign="center">
+        <Text textAlign="center" fontSize="sm">
           Play with friends on any device with a browser!
         </Text>
         
         <FormControl isRequired>
-          <FormLabel htmlFor="username">Your Name</FormLabel>
+          <FormLabel htmlFor="username" fontSize="sm">Your Name</FormLabel>
           <Input 
             id="username" 
             placeholder="Enter your name" 
             value={username} 
             onChange={(e) => setUsername(e.target.value)}
+            size="sm"
           />
         </FormControl>
         
-        <SimpleGrid columns={2} spacing={3}>
+        <SimpleGrid columns={2} spacing={2}>
           <Button 
             colorScheme="blue" 
             onClick={handleCreateGame}
             isLoading={isCreating}
+            size="sm"
           >
             Create Game
           </Button>
           <Button 
             colorScheme="green" 
             onClick={() => setShowJoinGame(true)}
+            size="sm"
           >
             Join Game
           </Button>
@@ -98,13 +101,14 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
           <ModalContent>
             <ModalHeader>Join Game</ModalHeader>
             <ModalCloseButton />
-            <ModalBody pb={6}>
+            <ModalBody pb={4}>
               <FormControl>
-                <FormLabel>Game Code</FormLabel>
+                <FormLabel fontSize="sm">Game Code</FormLabel>
                 <Input 
                   placeholder="Enter game code" 
                   value={gameCode} 
                   onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                  size="sm"
                 />
               </FormControl>
             </ModalBody>
@@ -114,10 +118,11 @@ const Home: React.FC<HomeProps> = ({ createGame, joinGame }) => {
                 mr={3} 
                 onClick={handleJoinGame}
                 isLoading={isJoining}
+                size="sm"
               >
                 Join
               </Button>
-              <Button onClick={() => setShowJoinGame(false)}>Cancel</Button>
+              <Button onClick={() => setShowJoinGame(false)} size="sm">Cancel</Button>
             </ModalFooter>
           </ModalContent>
         </Modal>

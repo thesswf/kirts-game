@@ -1,19 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Box, 
-  Heading, 
-  Stack, 
-  Text, 
   Button, 
+  Container, 
+  Flex, 
+  Grid, 
+  Heading, 
   Input, 
-  FormControl, 
-  FormLabel,
-  Flex,
+  Text, 
+  VStack, 
+  HStack, 
+  useToast, 
   Badge
 } from '@chakra-ui/react';
 import { io, Socket } from 'socket.io-client';
 import './App.css';
-import { GameState, Player, Prediction } from './types';
+import GameRoom from './components/GameRoom';
+import Home from './components/Home';
+import PlayerList from './components/PlayerList';
+import { GameState, Card as CardType, Pile, Player, Prediction } from './types';
+import Confetti from 'react-confetti';
 
 // Connect to the Socket.io server
 const SOCKET_SERVER_URL = process.env.NODE_ENV === 'production' 
@@ -696,7 +702,11 @@ const GameRoom: React.FC<GameRoomProps> = ({
   const renderGameOver = () => (
     <Stack direction="column" style={{ gap: '1rem' }}>
       <Heading size="lg" color="teal.500">Game Over!</Heading>
-      <Text>All piles have been completed.</Text>
+      <Text>
+        {gameState.remainingCards === 0 
+          ? "Congratulations! You've successfully played through all cards!" 
+          : "All piles have been completed."}
+      </Text>
       {isHost && (
         <Button colorScheme="teal" onClick={startGame}>
           Play Again
@@ -788,6 +798,10 @@ function App() {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
   const [gameId, setGameId] = useState<string | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showGameLost, setShowGameLost] = useState(false);
+  const [windowDimensions, setWindowDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const toast = useToast();
 
   // Initialize socket connection
   useEffect(() => {
@@ -798,6 +812,18 @@ function App() {
     return () => {
       newSocket.disconnect();
     };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Set up socket event listeners
@@ -850,6 +876,43 @@ function App() {
       }
     });
 
+    socket.on('gameOver', (data) => {
+      setGameState(data.gameState);
+      
+      // Check if game was won (no more cards) or lost (all piles dead)
+      if (data.gameState.remainingCards === 0) {
+        setShowConfetti(true);
+        toast({
+          title: "CONGRATULATIONS!",
+          description: "YOU WERE LOCKED IN!",
+          status: "success",
+          duration: 5000,
+          isClosable: true,
+          position: "top"
+        });
+        
+        // Hide confetti after 8 seconds
+        setTimeout(() => {
+          setShowConfetti(false);
+        }, 8000);
+      } else if (data.gameState.piles.every(pile => !pile.active)) {
+        setShowGameLost(true);
+        toast({
+          title: "LOSER!",
+          description: "LOCK IN!",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top"
+        });
+        
+        // Hide game lost animation after 5 seconds
+        setTimeout(() => {
+          setShowGameLost(false);
+        }, 5000);
+      }
+    });
+
     // Error handling
     socket.on('error', (errorMessage: string) => {
       alert(`Error: ${errorMessage}`);
@@ -860,9 +923,10 @@ function App() {
       socket.off('gameCreated');
       socket.off('gameJoined');
       socket.off('pileRevived');
+      socket.off('gameOver');
       socket.off('error');
     };
-  }, [socket, gameState]);
+  }, [socket, gameState, toast]);
 
   // Create a new game
   const createGame = (username: string) => {
@@ -922,6 +986,45 @@ function App() {
 
   return (
     <Box minH="100vh" bg="gray.50" p={3}>
+      {showConfetti && (
+        <Confetti
+          width={windowDimensions.width}
+          height={windowDimensions.height}
+          recycle={true}
+          numberOfPieces={200}
+        />
+      )}
+      
+      {showGameLost && (
+        <Box 
+          position="fixed"
+          top="0"
+          left="0"
+          right="0"
+          bottom="0"
+          bg="rgba(255, 0, 0, 0.3)"
+          zIndex="10"
+          pointerEvents="none"
+          className="game-lost-animation"
+        >
+          <Flex 
+            height="100%" 
+            justifyContent="center" 
+            alignItems="center"
+          >
+            <Text 
+              fontSize="6xl" 
+              fontWeight="bold" 
+              color="white" 
+              textShadow="2px 2px 4px rgba(0,0,0,0.5)"
+              className="game-lost-text"
+            >
+              LOSER! LOCK IN!
+            </Text>
+          </Flex>
+        </Box>
+      )}
+      
       <Stack direction="column" align="center" style={{ gap: '1.5rem' }}>
         <Heading as="h1" size="xl" color="teal.500">
           Kirt's Game

@@ -62,20 +62,20 @@ const GameRoom: React.FC<GameRoomProps> = ({
 
   // Render game code for sharing
   const renderGameCode = () => (
-    <Box textAlign="center" mb={4}>
+    <Box textAlign="center" mb={2}>
       <Text fontSize="sm" color="gray.500">Game Code:</Text>
       <Heading size="md" color="teal.500">{gameState.id}</Heading>
-      <Text fontSize="xs" mt={1}>Share this code with friends to join</Text>
+      <Text fontSize="xs" mt={0.5}>Share this code with friends to join</Text>
     </Box>
   );
 
   // Render waiting room
   const renderWaitingRoom = () => (
-    <VStack align="stretch" style={{ gap: '1.5rem' }}>
+    <VStack align="stretch" spacing={3}>
       {renderGameCode()}
       
       <Box>
-        <Text fontWeight="bold" mb={2}>Players:</Text>
+        <Text fontWeight="bold" mb={1}>Players:</Text>
         <PlayerList 
           players={gameState.players} 
           currentPlayerId={playerId || ''} 
@@ -86,7 +86,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
       {isHost && (
         <Button 
           colorScheme="teal" 
-          size="lg" 
+          size="md" 
           onClick={startGame}
           isDisabled={gameState.players.length < 1}
         >
@@ -98,7 +98,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
 
   // Render card grid
   const renderCardGrid = () => (
-    <Grid templateColumns="repeat(3, 1fr)" gap={4} mb={6}>
+    <Grid templateColumns="repeat(3, 1fr)" gap={3} mb={4}>
       {gameState.piles.map((pile, index) => (
         <Box 
           key={index}
@@ -136,9 +136,9 @@ const GameRoom: React.FC<GameRoomProps> = ({
 
   // Render prediction controls
   const renderPredictionControls = () => (
-    <Box mt={4}>
-      <Text mb={2} textAlign="center">Predict the next card:</Text>
-      <HStack justify="center" style={{ gap: '1rem' }}>
+    <Box mt={3}>
+      <Text mb={1} textAlign="center">Predict the next card:</Text>
+      <HStack justify="center" spacing={2}>
         <Button 
           colorScheme="red" 
           onClick={() => handlePrediction('low')}
@@ -166,7 +166,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
 
   // Render game over
   const renderGameOver = () => (
-    <VStack style={{ gap: '1rem' }}>
+    <VStack spacing={2}>
       <Heading size="lg" color="teal.500">Game Over!</Heading>
       <Text>All piles have been completed.</Text>
       {isHost && (
@@ -184,7 +184,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
     <Box 
       w="100%" 
       maxW="800px" 
-      p={4} 
+      p={3} 
       borderRadius="lg" 
       boxShadow="md" 
       bg="white"
@@ -192,7 +192,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
       borderColor="gray.200"
     >
       {/* Game Status */}
-      <Flex justify="space-between" align="center" mb={4}>
+      <Flex justify="space-between" align="center" mb={3}>
         <Box>
           <Text fontSize="sm" color="gray.500">Playing as</Text>
           <Text fontWeight="bold">{username}</Text>
@@ -222,7 +222,7 @@ const GameRoom: React.FC<GameRoomProps> = ({
           {renderCardGrid()}
           {renderPredictionControls()}
           
-          <Box mt={4}>
+          <Box mt={3}>
             <Heading size="sm" mb={1}>Players</Heading>
             <PlayerList 
               players={gameState.players} 
