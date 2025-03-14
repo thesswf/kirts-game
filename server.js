@@ -335,6 +335,79 @@ io.on('connection', (socket) => {
     }
   });
   
+  // Handle disconnections
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${socket.id}`);
+    
+    // Find all games this player is in
+    for (const gameId in games) {
+      const game = games[gameId];
+      const playerIndex = game.players.findIndex(p => p.id === socket.id);
+      
+      if (playerIndex !== -1) {
+        const player = game.players[playerIndex];
+        console.log(`Player ${player.username} disconnected from game ${gameId}`);
+        
+        // Mark the player as disconnected instead of removing immediately
+        player.disconnected = true;
+        player.disconnectedAt = Date.now();
+        
+        // Notify other players about the disconnection
+        socket.to(gameId).emit('playerDisconnected', {
+          playerId: socket.id,
+          username: player.username
+        });
+        
+        // Update the game state for other players
+        io.to(gameId).emit('updateGame', game);
+        
+        // Set a timeout to remove the player if they don't reconnect
+        // Use a shorter timeout (5 minutes) instead of 24 hours
+        setTimeout(() => {
+          // Check if the game and player still exist and player is still disconnected
+          if (games[gameId] && 
+              games[gameId].players[playerIndex] && 
+              games[gameId].players[playerIndex].disconnected) {
+            
+            console.log(`Player ${player.username} did not reconnect within timeout, removing from game ${gameId}`);
+            
+            // Remove the player from the game
+            games[gameId].players.splice(playerIndex, 1);
+            
+            // If no players left, remove the game
+            if (games[gameId].players.length === 0) {
+              console.log(`No players left in game ${gameId}, removing game`);
+              delete games[gameId];
+              return;
+            }
+            
+            // If the host left, assign a new host
+            if (!games[gameId].players.some(p => p.isHost)) {
+              games[gameId].players[0].isHost = true;
+              console.log(`Assigned new host in game ${gameId}: ${games[gameId].players[0].username}`);
+            }
+            
+            // If it was this player's turn, move to the next player
+            if (games[gameId].currentPlayerIndex === playerIndex) {
+              games[gameId].currentPlayerIndex = games[gameId].currentPlayerIndex % games[gameId].players.length;
+            } else if (games[gameId].currentPlayerIndex > playerIndex) {
+              games[gameId].currentPlayerIndex--;
+            }
+            
+            // Notify other players that this player has been removed
+            io.to(gameId).emit('playerRemoved', {
+              playerId: socket.id,
+              username: player.username
+            });
+            
+            // Update the game state
+            io.to(gameId).emit('updateGame', games[gameId]);
+          }
+        }, 5 * 60 * 1000); // 5 minutes timeout
+      }
+    }
+  });
+  
   // Start the game
   socket.on('startGame', (gameId) => {
     console.log(`Starting game ${gameId}`);

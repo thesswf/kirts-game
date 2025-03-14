@@ -22,6 +22,9 @@ export interface Player {
   isHost: boolean;
   correctPredictions?: number;
   totalPredictions?: number;
+  sessionId?: string;
+  disconnected?: boolean;
+  disconnectedAt?: number | null;
 }
 
 export interface GameState {
