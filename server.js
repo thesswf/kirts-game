@@ -151,6 +151,9 @@ io.on('connection', (socket) => {
       });
     }
     
+    // Set remaining cards to 43 (52 total cards - 9 initial pile cards)
+    game.remainingCards = 43;
+    
     // Randomly select the first player
     game.currentPlayerIndex = Math.floor(Math.random() * game.players.length);
     
