@@ -61,11 +61,11 @@ function compareCards(card1, card2, prediction) {
   const value1 = cardValues.indexOf(card1.value);
   const value2 = cardValues.indexOf(card2.value);
   
-  if (prediction === 'high') {
+  if (prediction === 'higher') {
     return value2 > value1;
-  } else if (prediction === 'low') {
+  } else if (prediction === 'lower') {
     return value2 < value1;
-  } else { // equal
+  } else { // same
     return value2 === value1;
   }
 }
@@ -362,17 +362,14 @@ io.on('connection', (socket) => {
     game.currentPileIndex = null;
     game.remainingCards = 43; // 52 - 9 initial cards
     
-    // Deal 3 piles with 3 cards each
-    for (let i = 0; i < 3; i++) {
-      const pileCards = [];
-      for (let j = 0; j < 3; j++) {
-        pileCards.push({
-          ...game.deck.pop(),
-          id: `card-${i}-${j}`
-        });
-      }
+    // Create a 3x3 grid of piles (9 piles with 1 card each)
+    for (let i = 0; i < 9; i++) {
+      const card = game.deck.pop();
       game.piles.push({
-        cards: pileCards,
+        cards: [{
+          ...card,
+          id: `card-${i}-0`
+        }],
         active: true,
         isDead: false
       });

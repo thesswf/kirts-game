@@ -817,12 +817,11 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
     <Box 
       display="grid" 
       gridTemplateColumns="repeat(3, 1fr)" 
+      gridTemplateRows="auto repeat(3, 1fr)"
       gap={4} 
       mb={6}
       className="card-grid"
     >
-      {/* Game Code Display is now in the status bar */}
-      
       {/* Remaining Cards Counter */}
       <Box 
         gridColumn="1 / -1" 
@@ -851,6 +850,7 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
         </Flex>
       </Box>
       
+      {/* 3x3 Grid of Cards */}
       {gameState.piles.map((pile: any, index: number) => {
         const isPileSelected = selectedPileIndex === index;
         
