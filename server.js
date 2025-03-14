@@ -120,9 +120,9 @@ io.on('connection', (socket) => {
       playerSessions[sessionId].socketId = socket.id;
       playerSessions[sessionId].lastActive = Date.now();
       
-      // If the game exists, update the player's socket ID
+      // If the game exists, try to add the player back
       if (games[gameId]) {
-        // First try to find by old socket ID
+        // First try to find by old socket ID (unlikely since we now remove players on disconnect)
         let playerIndex = games[gameId].players.findIndex(p => p.id === oldSocketId);
         
         // If not found by old socket ID, try to find by session ID
@@ -131,16 +131,11 @@ io.on('connection', (socket) => {
         }
         
         if (playerIndex !== -1) {
+          // Player still exists in the game (rare case)
           const player = games[gameId].players[playerIndex];
           
           // Update the player's socket ID
           games[gameId].players[playerIndex].id = socket.id;
-          
-          // If player was marked as disconnected, mark them as reconnected
-          if (player.disconnected) {
-            games[gameId].players[playerIndex].disconnected = false;
-            games[gameId].players[playerIndex].disconnectedAt = null;
-          }
           
           // Join the game room
           socket.join(gameId);
@@ -165,9 +160,9 @@ io.on('connection', (socket) => {
           console.log(`Player ${username} successfully reconnected to game ${gameId}`);
           return;
         } else {
-          console.log(`Player not found in game ${gameId} with session ${sessionId}`);
+          console.log(`Player not found in game ${gameId}, adding them back as a new player`);
           
-          // If the player wasn't found but the game exists, they might have been removed
+          // If the player wasn't found but the game exists, they were removed
           // Let's add them back to the game as a new player
           if (games[gameId].status !== 'finished') {
             console.log(`Adding ${username} back to game ${gameId} as a new player`);
@@ -179,9 +174,7 @@ io.on('connection', (socket) => {
               isHost: games[gameId].players.length === 0, // Make them host if no players left
               correctPredictions: 0,
               totalPredictions: 0,
-              sessionId,
-              disconnected: false,
-              disconnectedAt: null
+              sessionId
             });
             
             // Join the game room
@@ -383,68 +376,52 @@ io.on('connection', (socket) => {
         const player = game.players[playerIndex];
         console.log(`Player ${player.username} disconnected from game ${gameId}`);
         
-        // Mark the player as disconnected instead of removing immediately
-        player.disconnected = true;
-        player.disconnectedAt = Date.now();
+        // Remove the player from the game immediately
+        game.players.splice(playerIndex, 1);
         
-        // If it's this player's turn and the game is in progress, move to the next player
+        // Clean up the player's session
+        Object.keys(playerSessions).forEach(sid => {
+          if (playerSessions[sid].socketId === socket.id) {
+            console.log(`Removing session ${sid} for player ${player.username}`);
+            delete playerSessions[sid];
+          }
+        });
+        
+        // If no players left, remove the game
+        if (game.players.length === 0) {
+          console.log(`No players left in game ${gameId}, removing game`);
+          delete games[gameId];
+          return;
+        }
+        
+        // If the host left, assign a new host
+        if (!game.players.some(p => p.isHost)) {
+          game.players[0].isHost = true;
+          console.log(`Assigned new host in game ${gameId}: ${game.players[0].username}`);
+        }
+        
+        // If it was this player's turn, move to the next player
         if (game.status === 'playing' && game.currentPlayerIndex === playerIndex) {
           console.log(`It was ${player.username}'s turn, moving to next player`);
-          moveToNextActivePlayer(game);
+          // Since we removed the player, adjust the current player index
+          if (game.currentPlayerIndex >= game.players.length) {
+            game.currentPlayerIndex = 0;
+          }
+          // Reset the current pile
+          game.currentPileIndex = null;
+        } else if (game.currentPlayerIndex > playerIndex) {
+          // If the current player index is after the removed player, decrement it
+          game.currentPlayerIndex--;
         }
         
         // Notify other players about the disconnection
-        socket.to(gameId).emit('playerDisconnected', {
+        io.to(gameId).emit('playerLeft', {
           playerId: socket.id,
           username: player.username
         });
         
         // Update the game state for other players
         io.to(gameId).emit('updateGame', game);
-        
-        // Set a timeout to remove the player if they don't reconnect
-        // Use a shorter timeout (5 minutes) instead of 24 hours
-        setTimeout(() => {
-          // Check if the game and player still exist and player is still disconnected
-          if (games[gameId] && 
-              games[gameId].players[playerIndex] && 
-              games[gameId].players[playerIndex].disconnected) {
-            
-            console.log(`Player ${player.username} did not reconnect within timeout, removing from game ${gameId}`);
-            
-            // Remove the player from the game
-            games[gameId].players.splice(playerIndex, 1);
-            
-            // If no players left, remove the game
-            if (games[gameId].players.length === 0) {
-              console.log(`No players left in game ${gameId}, removing game`);
-              delete games[gameId];
-              return;
-            }
-            
-            // If the host left, assign a new host
-            if (!games[gameId].players.some(p => p.isHost)) {
-              games[gameId].players[0].isHost = true;
-              console.log(`Assigned new host in game ${gameId}: ${games[gameId].players[0].username}`);
-            }
-            
-            // If it was this player's turn, move to the next player
-            if (games[gameId].currentPlayerIndex === playerIndex) {
-              moveToNextActivePlayer(games[gameId]);
-            } else if (games[gameId].currentPlayerIndex > playerIndex) {
-              games[gameId].currentPlayerIndex--;
-            }
-            
-            // Notify other players that this player has been removed
-            io.to(gameId).emit('playerRemoved', {
-              playerId: socket.id,
-              username: player.username
-            });
-            
-            // Update the game state
-            io.to(gameId).emit('updateGame', games[gameId]);
-          }
-        }, 5 * 60 * 1000); // 5 minutes timeout
       }
     }
   });

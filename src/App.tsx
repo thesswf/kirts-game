@@ -596,7 +596,6 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
       {sortedPlayers.map((player: PlayerType, index: number) => {
         const isCurrentUser = player.id === currentPlayerId;
         const isCurrentTurn = players.indexOf(player) === currentTurnIndex;
-        const isDisconnected = player.disconnected;
         
         // Calculate accuracy percentage
         const accuracyPercentage = player.totalPredictions && player.totalPredictions > 0
@@ -610,8 +609,7 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
             borderRadius="md"
             bg={isCurrentTurn ? 'teal.50' : 'white'}
             borderWidth="1px"
-            borderColor={isCurrentTurn ? 'teal.200' : isDisconnected ? 'red.200' : 'gray.200'}
-            opacity={isDisconnected ? 0.7 : 1}
+            borderColor={isCurrentTurn ? 'teal.200' : 'gray.200'}
             className={isCurrentTurn ? 'current-turn' : ''}
           >
             <Flex justifyContent="space-between" alignItems="center">
@@ -646,20 +644,6 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
                     mr={2}
                   >
                     Host
-                  </Box>
-                )}
-                
-                {isDisconnected && (
-                  <Box 
-                    bg="red.100" 
-                    color="red.800" 
-                    px={2} 
-                    py={1} 
-                    borderRadius="md" 
-                    fontSize="xs"
-                    mr={2}
-                  >
-                    Disconnected
                   </Box>
                 )}
                 
@@ -1185,20 +1169,6 @@ function App() {
     const handleUpdateGame = (game: ExtendedGameState) => {
       console.log('Game updated:', game);
       
-      // Check if the current player is disconnected and show a notification
-      if (gameState && 
-          game.status === 'playing' && 
-          gameState.currentPlayerIndex !== game.currentPlayerIndex) {
-        
-        const previousPlayer = gameState.players[gameState.currentPlayerIndex];
-        if (previousPlayer && previousPlayer.disconnected) {
-          setNotification({
-            message: `Skipping ${previousPlayer.username}'s turn (disconnected)`,
-            type: 'info'
-          });
-        }
-      }
-      
       setGameState(game);
       
       // Check if all piles are dead
@@ -1237,34 +1207,16 @@ function App() {
       });
     };
 
-    const handlePlayerDisconnected = (data: { playerId: string, username: string }) => {
-      setNotification({
-        message: `${data.username} disconnected from the game`,
-        type: 'warning'
-      });
-    };
-    
-    const handlePlayerRemoved = (data: { playerId: string, username: string }) => {
-      setNotification({
-        message: `${data.username} was removed from the game due to inactivity`,
-        type: 'error'
-      });
-    };
-
     socket.on('updateGame', handleUpdateGame);
     socket.on('playerJoined', handlePlayerJoined);
     socket.on('playerLeft', handlePlayerLeft);
     socket.on('playerReconnected', handlePlayerReconnected);
-    socket.on('playerDisconnected', handlePlayerDisconnected);
-    socket.on('playerRemoved', handlePlayerRemoved);
     
     return () => {
       socket.off('updateGame', handleUpdateGame);
       socket.off('playerJoined', handlePlayerJoined);
       socket.off('playerLeft', handlePlayerLeft);
       socket.off('playerReconnected', handlePlayerReconnected);
-      socket.off('playerDisconnected', handlePlayerDisconnected);
-      socket.off('playerRemoved', handlePlayerRemoved);
     };
   }, [socket, gameId, showDeathAnimation]);
 
