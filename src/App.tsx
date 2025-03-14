@@ -37,7 +37,7 @@ interface ExtendedGameState extends GameState {
 // Connect to the Socket.io server
 const SOCKET_SERVER_URL = process.env.NODE_ENV === 'production' 
   ? window.location.origin 
-  : 'http://localhost:3006';
+  : 'http://localhost:3005';
 
 // Home component
 interface HomeScreenProps {
@@ -49,18 +49,47 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ createGame, joinGame }) => {
   const [username, setUsername] = useState('');
   const [gameId, setGameId] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCreateGame = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim()) {
+    if (username.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      console.log('Creating game with username:', username.trim());
       createGame(username.trim());
+      
+      // Reset submission state after a delay
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 2000);
     }
   };
 
   const handleJoinGame = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim() && gameId.trim()) {
+    if (username.trim() && gameId.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      console.log('Joining game:', gameId.trim().toUpperCase(), 'with username:', username.trim());
       joinGame(gameId.trim().toUpperCase(), username.trim());
+      
+      // Reset submission state after a delay
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 2000);
+    }
+  };
+  
+  // Direct button handler for iOS compatibility
+  const handleCreateGameButton = () => {
+    if (username.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      console.log('Creating game with username (button):', username.trim());
+      createGame(username.trim());
+      
+      // Reset submission state after a delay
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 2000);
     }
   };
 
@@ -120,7 +149,10 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ createGame, joinGame }) => {
                   colorScheme="teal" 
                   size="lg" 
                   width="full"
-                  disabled={!username.trim()}
+                  disabled={!username.trim() || isSubmitting}
+                  isLoading={isSubmitting}
+                  loadingText="Creating..."
+                  onClick={handleCreateGameButton} // Add direct click handler for iOS
                 >
                   Create New Game
                 </Button>
@@ -152,7 +184,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ createGame, joinGame }) => {
                   colorScheme="teal" 
                   size="lg" 
                   width="full"
-                  disabled={!username.trim() || !gameId.trim()}
+                  disabled={!username.trim() || !gameId.trim() || isSubmitting}
+                  isLoading={isSubmitting}
+                  loadingText="Joining..."
                 >
                   Join Game
                 </Button>
@@ -994,109 +1028,134 @@ function App() {
 
   // Initialize socket connection
   useEffect(() => {
-    // Connect to the server
-    const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:3001');
-    setSocket(newSocket);
-
-    // Check for saved session in localStorage
-    const savedSession = localStorage.getItem('cardGameSession');
-    if (savedSession) {
-      try {
-        const session = JSON.parse(savedSession);
-        if (session.username && session.gameId && session.sessionId) {
-          console.log('Found saved session, attempting to reconnect...');
-          setUsername(session.username);
-          setGameId(session.gameId);
-          setSessionId(session.sessionId);
-          
-          // We'll attempt reconnection after socket is connected
+    try {
+      console.log('Initializing socket connection to:', SOCKET_SERVER_URL);
+      
+      // Connect to the server with explicit options for better iOS compatibility
+      const newSocket = io(SOCKET_SERVER_URL, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+      });
+      
+      // Add connection event listeners
+      newSocket.on('connect', () => {
+        console.log('Successfully connected to server with ID:', newSocket.id);
+      });
+      
+      newSocket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        setErrorMessage(`Connection error: ${error.message}. Please try again.`);
+        setTimeout(() => setErrorMessage(''), 5000);
+      });
+      
+      newSocket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        if (reason === 'io server disconnect') {
+          // The server has forcefully disconnected the socket
+          console.log('Attempting to reconnect...');
+          newSocket.connect();
         }
-      } catch (error) {
-        console.error('Error parsing saved session:', error);
+      });
+      
+      setSocket(newSocket);
+      
+      // Check for saved session in localStorage
+      const savedSession = localStorage.getItem('cardGameSession');
+      if (savedSession) {
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.username && session.gameId && session.sessionId) {
+            console.log('Found saved session, attempting to reconnect...');
+            setUsername(session.username);
+            setGameId(session.gameId);
+            setSessionId(session.sessionId);
+            
+            // We'll attempt reconnection after socket is connected
+          }
+        } catch (error) {
+          console.error('Error parsing saved session:', error);
+          localStorage.removeItem('cardGameSession');
+        }
+      }
+
+      // Socket event listeners
+      newSocket.on('gameCreated', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+        setGameId(gameId);
+        setPlayerId(playerId);
+        setSessionId(sessionId);
+        
+        // Save session to localStorage
+        saveSessionToLocalStorage(username, gameId, sessionId);
+      });
+
+      newSocket.on('gameJoined', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
+        setGameId(gameId);
+        setPlayerId(playerId);
+        setSessionId(sessionId);
+        
+        // Save session to localStorage
+        saveSessionToLocalStorage(username, gameId, sessionId);
+      });
+
+      newSocket.on('updateGame', (updatedGameState: ExtendedGameState) => {
+        setGameState(updatedGameState);
+        
+        // Check if all piles are dead
+        const allPilesDead = updatedGameState.piles.length > 0 && 
+          updatedGameState.piles.every(pile => pile.isDead);
+        
+        if (allPilesDead && !showDeathAnimation) {
+          setShowDeathAnimation(true);
+          setTimeout(() => setShowDeathAnimation(false), 2000);
+        }
+        
+        // Check if game is won
+        if (updatedGameState.status === 'finished' && updatedGameState.winner) {
+          setShowConfetti(true);
+        }
+      });
+
+      newSocket.on('playerJoined', ({ username }: { username: string }) => {
+        setNotification(`${username} joined the game`);
+        setTimeout(() => setNotification(''), 3000);
+      });
+
+      newSocket.on('playerLeft', ({ username }: { username: string }) => {
+        setNotification(`${username} left the game`);
+        setTimeout(() => setNotification(''), 3000);
+      });
+
+      newSocket.on('playerDisconnected', ({ username }: { username: string }) => {
+        setNotification(`${username} disconnected`);
+        setTimeout(() => setNotification(''), 3000);
+      });
+
+      newSocket.on('playerReconnected', ({ username }: { username: string }) => {
+        setNotification(`${username} reconnected`);
+        setTimeout(() => setNotification(''), 3000);
+      });
+
+      newSocket.on('reconnectFailed', () => {
+        setErrorMessage('Failed to reconnect to game. Starting a new session.');
+        setTimeout(() => setErrorMessage(''), 5000);
+        
+        // Clear saved session
         localStorage.removeItem('cardGameSession');
-      }
+        setSessionId('');
+        setGameId('');
+        setGameState(null);
+      });
+
+      return () => {
+        console.log('Cleaning up socket connection');
+        newSocket.disconnect();
+      };
+    } catch (error) {
+      console.error('Error setting up socket connection:', error);
+      setErrorMessage('Failed to connect to game server. Please refresh the page and try again.');
     }
-
-    // Socket event listeners
-    newSocket.on('connect', () => {
-      console.log('Connected to server');
-    });
-
-    newSocket.on('error', (message: string) => {
-      setErrorMessage(message);
-      setTimeout(() => setErrorMessage(''), 5000);
-    });
-
-    newSocket.on('gameCreated', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
-      setGameId(gameId);
-      setPlayerId(playerId);
-      setSessionId(sessionId);
-      
-      // Save session to localStorage
-      saveSessionToLocalStorage(username, gameId, sessionId);
-    });
-
-    newSocket.on('gameJoined', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
-      setGameId(gameId);
-      setPlayerId(playerId);
-      setSessionId(sessionId);
-      
-      // Save session to localStorage
-      saveSessionToLocalStorage(username, gameId, sessionId);
-    });
-
-    newSocket.on('updateGame', (updatedGameState: ExtendedGameState) => {
-      setGameState(updatedGameState);
-      
-      // Check if all piles are dead
-      const allPilesDead = updatedGameState.piles.length > 0 && 
-        updatedGameState.piles.every(pile => pile.isDead);
-      
-      if (allPilesDead && !showDeathAnimation) {
-        setShowDeathAnimation(true);
-        setTimeout(() => setShowDeathAnimation(false), 2000);
-      }
-      
-      // Check if game is won
-      if (updatedGameState.status === 'finished' && updatedGameState.winner) {
-        setShowConfetti(true);
-      }
-    });
-
-    newSocket.on('playerJoined', ({ username }: { username: string }) => {
-      setNotification(`${username} joined the game`);
-      setTimeout(() => setNotification(''), 3000);
-    });
-
-    newSocket.on('playerLeft', ({ username }: { username: string }) => {
-      setNotification(`${username} left the game`);
-      setTimeout(() => setNotification(''), 3000);
-    });
-
-    newSocket.on('playerDisconnected', ({ username }: { username: string }) => {
-      setNotification(`${username} disconnected`);
-      setTimeout(() => setNotification(''), 3000);
-    });
-
-    newSocket.on('playerReconnected', ({ username }: { username: string }) => {
-      setNotification(`${username} reconnected`);
-      setTimeout(() => setNotification(''), 3000);
-    });
-
-    newSocket.on('reconnectFailed', () => {
-      setErrorMessage('Failed to reconnect to game. Starting a new session.');
-      setTimeout(() => setErrorMessage(''), 5000);
-      
-      // Clear saved session
-      localStorage.removeItem('cardGameSession');
-      setSessionId('');
-      setGameId('');
-      setGameState(null);
-    });
-
-    return () => {
-      newSocket.disconnect();
-    };
   }, []);
 
   // Attempt reconnection if we have session data
@@ -1122,9 +1181,22 @@ function App() {
 
   // Create a new game
   const createGame = (username: string) => {
-    if (!socket) return;
-    setUsername(username);
-    socket.emit('createGame', username);
+    if (!socket) {
+      console.error('Cannot create game: Socket not connected');
+      setErrorMessage('Not connected to server. Please refresh the page and try again.');
+      setTimeout(() => setErrorMessage(''), 5000);
+      return;
+    }
+    
+    try {
+      console.log('Creating game with username:', username);
+      setUsername(username);
+      socket.emit('createGame', username);
+    } catch (error) {
+      console.error('Error creating game:', error);
+      setErrorMessage('Failed to create game. Please try again.');
+      setTimeout(() => setErrorMessage(''), 5000);
+    }
   };
 
   // Join an existing game
@@ -1190,6 +1262,48 @@ function App() {
 
   return (
     <Box minH="100vh" bg="gray.50" p={3}>
+      {/* Error message toast */}
+      {errorMessage && (
+        <Box
+          position="fixed"
+          top="20px"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex="1000"
+          bg="red.500"
+          color="white"
+          p={4}
+          borderRadius="md"
+          boxShadow="lg"
+          maxW="90%"
+          width="400px"
+          textAlign="center"
+        >
+          <Text fontWeight="bold">{errorMessage}</Text>
+        </Box>
+      )}
+      
+      {/* Notification toast */}
+      {notification && (
+        <Box
+          position="fixed"
+          top={errorMessage ? "80px" : "20px"}
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex="1000"
+          bg="blue.500"
+          color="white"
+          p={4}
+          borderRadius="md"
+          boxShadow="lg"
+          maxW="90%"
+          width="400px"
+          textAlign="center"
+        >
+          <Text fontWeight="bold">{notification}</Text>
+        </Box>
+      )}
+      
       {showConfetti && (
         <Confetti
           width={windowDimensions.width}
