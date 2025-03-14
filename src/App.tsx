@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Box, 
   Button, 
@@ -14,30 +14,35 @@ import {
   FormControl,
   FormLabel, 
   useToast, 
-  Badge
+  Badge,
+  Spacer,
+  IconButton,
+  useColorMode,
+  useColorModeValue,
+  Tooltip
 } from '@chakra-ui/react';
 import { io, Socket } from 'socket.io-client';
+import { SunIcon, MoonIcon } from '@chakra-ui/icons';
 import './App.css';
 import GameRoom from './components/GameRoom';
 import Home from './components/Home';
 import PlayerList from './components/PlayerList';
-import { GameState, Card as CardType, Pile, Player, Prediction } from './types';
+import { GameState, Card as CardType, Pile as PileType, Player as PlayerType } from './types';
 import Confetti from 'react-confetti';
+import useWindowSize from 'react-use/lib/useWindowSize';
 
 // Extend the base interfaces with additional properties needed for our app
-interface ExtendedPile extends Pile {
+interface ExtendedPile extends PileType {
   isDead?: boolean; // Add this property to fix linter error
 }
 
 interface ExtendedGameState extends GameState {
-  winner?: Player; // Add this optional property to fix linter error
+  winner?: PlayerType; // Add this optional property to fix linter error
   piles: ExtendedPile[]; // Override piles with our extended version
 }
 
 // Connect to the Socket.io server
-const SOCKET_SERVER_URL = process.env.NODE_ENV === 'production' 
-  ? window.location.origin 
-  : 'http://localhost:3005';
+const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_SERVER || 'https://kirts-game.onrender.com';
 
 // Home component
 interface HomeScreenProps {
@@ -570,7 +575,7 @@ const Card: React.FC<CardProps> = ({
 
 // Player list component
 interface PlayerListSectionProps {
-  players: Player[];
+  players: PlayerType[];
   currentPlayerId: string | null;
   currentTurnIndex?: number;
 }
@@ -592,7 +597,7 @@ const PlayerListSection: React.FC<PlayerListSectionProps> = ({
 
   return (
     <Stack direction="column" align="stretch" style={{ gap: '0.5rem' }}>
-      {sortedPlayers.map((player: Player, index: number) => {
+      {sortedPlayers.map((player: PlayerType, index: number) => {
         const isCurrentUser = player.id === currentPlayerId;
         const isCurrentTurn = players.indexOf(player) === currentTurnIndex;
         
@@ -678,7 +683,8 @@ interface GameRoomSectionProps {
   exitToLobby: () => void;
   selectPile: (pileIndex: number) => void;
   makePrediction: (prediction: Prediction) => void;
-  currentPlayer?: Player;
+  currentPlayer?: PlayerType;
+  showDeathAnimation: boolean;
 }
 
 const GameRoomSection: React.FC<GameRoomSectionProps> = ({
@@ -692,6 +698,7 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
   selectPile,
   makePrediction,
   currentPlayer,
+  showDeathAnimation
 }) => {
   const isHost = currentPlayer?.isHost || false;
   const isWaiting = gameState.status === 'waiting';
@@ -911,7 +918,7 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
       <Flex justifyContent="center" gap={4}>
         <Button 
           colorScheme="red" 
-          onClick={() => handlePrediction('low')}
+          onClick={() => handlePrediction('lower')}
           disabled={!isMyTurn || selectedPileIndex === null}
           className="prediction-button"
         >
@@ -919,15 +926,15 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
         </Button>
         <Button 
           colorScheme="gray" 
-          onClick={() => handlePrediction('equal')}
+          onClick={() => handlePrediction('same')}
           disabled={!isMyTurn || selectedPileIndex === null}
           className="prediction-button"
         >
-          Equal
+          Same
         </Button>
         <Button 
           colorScheme="green" 
-          onClick={() => handlePrediction('high')}
+          onClick={() => handlePrediction('higher')}
           disabled={!isMyTurn || selectedPileIndex === null}
           className="prediction-button"
         >
@@ -1010,239 +1017,236 @@ const GameRoomSection: React.FC<GameRoomSectionProps> = ({
   );
 };
 
+type Prediction = 'higher' | 'lower' | 'same';
+
+interface NotificationState {
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+}
+
 function App() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [username, setUsername] = useState('');
+  const [gameId, setGameId] = useState('');
+  const [playerId, setPlayerId] = useState('');
+  const [sessionId, setSessionId] = useState('');
   const [gameState, setGameState] = useState<ExtendedGameState | null>(null);
-  const [playerId, setPlayerId] = useState<string | null>(null);
-  const [username, setUsername] = useState<string>('');
-  const [gameId, setGameId] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<NotificationState | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showDeathAnimation, setShowDeathAnimation] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [showGameLost, setShowGameLost] = useState(false);
-  const [windowDimensions, setWindowDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const { width, height } = useWindowSize();
+  const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [notification, setNotification] = useState<string>('');
-  const [showDeathAnimation, setShowDeathAnimation] = useState<boolean>(false);
 
   // Initialize socket connection
-  useEffect(() => {
-    try {
-      console.log('Initializing socket connection to:', SOCKET_SERVER_URL);
-      
-      // Connect to the server with explicit options for better iOS compatibility
-      const newSocket = io(SOCKET_SERVER_URL, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
-      });
-      
-      // Add connection event listeners
-      newSocket.on('connect', () => {
-        console.log('Successfully connected to server with ID:', newSocket.id);
-        
-        // Attempt reconnection immediately after connection is established
-        const savedSession = localStorage.getItem('cardGameSession');
-        if (savedSession) {
-          try {
-            const session = JSON.parse(savedSession);
-            if (session.username && session.gameId && session.sessionId) {
-              console.log('Found saved session, attempting to reconnect...', session);
-              setUsername(session.username);
-              setGameId(session.gameId);
-              setSessionId(session.sessionId);
-              
-              // Attempt reconnection immediately
-              newSocket.emit('reconnect', { 
-                username: session.username, 
-                sessionId: session.sessionId 
-              });
-              
-              // Show reconnecting notification
-              setNotification(`Reconnecting to game ${session.gameId}...`);
-            }
-          } catch (error) {
-            console.error('Error parsing saved session:', error);
-            localStorage.removeItem('cardGameSession');
-          }
-        }
-      });
-      
-      newSocket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-        setErrorMessage(`Connection error: ${error.message}. Please try again.`);
-        setTimeout(() => setErrorMessage(''), 5000);
-      });
-      
-      newSocket.on('disconnect', (reason) => {
-        console.log('Socket disconnected:', reason);
-        if (reason === 'io server disconnect') {
-          // The server has forcefully disconnected the socket
-          console.log('Attempting to reconnect...');
-          newSocket.connect();
-        }
-      });
-      
-      setSocket(newSocket);
-      
-      // Socket event listeners
-      newSocket.on('gameCreated', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
-        console.log('Game created:', { gameId, playerId, sessionId });
-        setGameId(gameId);
-        setPlayerId(playerId);
-        setSessionId(sessionId);
-        
-        // Save session to localStorage
-        saveSessionToLocalStorage(username, gameId, sessionId);
-      });
-
-      newSocket.on('gameJoined', ({ gameId, playerId, sessionId }: { gameId: string, playerId: string, sessionId: string }) => {
-        console.log('Game joined:', { gameId, playerId, sessionId });
-        setGameId(gameId);
-        setPlayerId(playerId);
-        setSessionId(sessionId);
-        
-        // Save session to localStorage
-        saveSessionToLocalStorage(username, gameId, sessionId);
-      });
-
-      newSocket.on('updateGame', (updatedGameState: ExtendedGameState) => {
-        setGameState(updatedGameState);
-        
-        // Check if all piles are dead
-        const allPilesDead = updatedGameState.piles.length > 0 && 
-          updatedGameState.piles.every(pile => pile.isDead);
-        
-        if (allPilesDead && !showDeathAnimation) {
-          setShowDeathAnimation(true);
-          setTimeout(() => setShowDeathAnimation(false), 2000);
-        }
-        
-        // Check if game is won
-        if (updatedGameState.status === 'finished' && updatedGameState.winner) {
-          setShowConfetti(true);
-        }
-      });
-
-      newSocket.on('playerJoined', ({ username }: { username: string }) => {
-        setNotification(`${username} joined the game`);
-        setTimeout(() => setNotification(''), 3000);
-      });
-
-      newSocket.on('playerLeft', ({ username }: { username: string }) => {
-        setNotification(`${username} left the game`);
-        setTimeout(() => setNotification(''), 3000);
-      });
-
-      newSocket.on('playerDisconnected', ({ username }: { username: string }) => {
-        setNotification(`${username} disconnected`);
-        setTimeout(() => setNotification(''), 3000);
-      });
-
-      newSocket.on('playerReconnected', ({ username }: { username: string }) => {
-        setNotification(`${username} reconnected`);
-        setTimeout(() => setNotification(''), 3000);
-      });
-
-      newSocket.on('reconnectFailed', () => {
-        setErrorMessage('Failed to reconnect to game. Starting a new session.');
-        setTimeout(() => setErrorMessage(''), 5000);
-        
-        // Clear saved session
-        localStorage.removeItem('cardGameSession');
-        setSessionId('');
-        setGameId('');
-        setGameState(null);
-      });
-
-      return () => {
-        console.log('Cleaning up socket connection');
-        newSocket.disconnect();
-      };
-    } catch (error) {
-      console.error('Error setting up socket connection:', error);
-      setErrorMessage('Failed to connect to game server. Please refresh the page and try again.');
-    }
+  const socket = useMemo(() => {
+    const newSocket = io(SOCKET_SERVER_URL, {
+      reconnectionAttempts: 10,
+      timeout: 20000,
+      transports: ['websocket', 'polling']
+    });
+    
+    // Save the socket instance for cleanup
+    return newSocket;
   }, []);
 
-  // Save session data to localStorage
-  const saveSessionToLocalStorage = (username: string, gameId: string, sessionId: string) => {
-    localStorage.setItem('cardGameSession', JSON.stringify({ username, gameId, sessionId }));
-  };
+  // Handle socket connection and reconnection
+  useEffect(() => {
+    // Check for saved session on connection
+    const handleConnect = () => {
+      console.log('Connected to server');
+      
+      // Check if we have a saved session
+      const savedSession = localStorage.getItem('cardGameSession');
+      if (savedSession) {
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.username && session.sessionId && session.gameId) {
+            console.log('Found saved session, attempting to reconnect:', session);
+            setNotification({
+              message: `Reconnecting to game as ${session.username}...`,
+              type: 'info'
+            });
+            
+            // Attempt to reconnect with the saved session
+            socket.emit('reconnect', {
+              username: session.username,
+              sessionId: session.sessionId
+            });
+          }
+        } catch (error) {
+          console.error('Error parsing saved session:', error);
+          localStorage.removeItem('cardGameSession');
+        }
+      }
+    };
 
-  // Clear session data when exiting game
-  const clearSession = () => {
-    localStorage.removeItem('cardGameSession');
-    setSessionId('');
-    setGameId('');
-    setGameState(null);
-  };
+    // Handle successful reconnection
+    const handleGameJoined = (data: any) => {
+      console.log('Game joined:', data);
+      setGameId(data.gameId);
+      setPlayerId(data.playerId);
+      setSessionId(data.sessionId);
+      
+      // Save session data to localStorage
+      const sessionData = {
+        username: username,
+        sessionId: data.sessionId,
+        gameId: data.gameId
+      };
+      localStorage.setItem('cardGameSession', JSON.stringify(sessionData));
+      
+      if (data.reconnected) {
+        setNotification({
+          message: `Successfully reconnected to game!`,
+          type: 'success'
+        });
+      }
+    };
+    
+    // Handle reconnection failure
+    const handleReconnectFailed = () => {
+      console.log('Reconnection failed');
+      setNotification({
+        message: 'Failed to reconnect to game. Please join again.',
+        type: 'error'
+      });
+      localStorage.removeItem('cardGameSession');
+      setGameId('');
+      setPlayerId('');
+      setSessionId('');
+      setGameState(null);
+    };
+
+    // Set up event listeners
+    socket.on('connect', handleConnect);
+    socket.on('gameJoined', handleGameJoined);
+    socket.on('gameCreated', handleGameJoined);
+    socket.on('reconnectFailed', handleReconnectFailed);
+    
+    // Handle errors
+    socket.on('error', (error: string) => {
+      console.error('Socket error:', error);
+      setNotification({
+        message: error,
+        type: 'error'
+      });
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setNotification({
+        message: 'Disconnected from server. Attempting to reconnect...',
+        type: 'warning'
+      });
+    });
+
+    // Cleanup function
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('gameJoined', handleGameJoined);
+      socket.off('gameCreated', handleGameJoined);
+      socket.off('reconnectFailed', handleReconnectFailed);
+      socket.off('error');
+      socket.off('disconnect');
+    };
+  }, [socket, username]);
+
+  // Handle game updates
+  useEffect(() => {
+    const handleUpdateGame = (game: ExtendedGameState) => {
+      console.log('Game updated:', game);
+      setGameState(game);
+      
+      // Check if all piles are dead
+      const allPilesDead = game.piles.length > 0 && 
+        game.piles.every(pile => pile.isDead);
+      
+      if (allPilesDead && !showDeathAnimation) {
+        setShowDeathAnimation(true);
+        setTimeout(() => setShowDeathAnimation(false), 2000);
+      }
+      
+      // Check if game is won
+      if (game.status === 'finished' && game.winner) {
+        setShowConfetti(true);
+      }
+    };
+    
+    const handlePlayerJoined = (data: { playerId: string, username: string }) => {
+      setNotification({
+        message: `${data.username} joined the game`,
+        type: 'info'
+      });
+    };
+    
+    const handlePlayerLeft = (data: { playerId: string, username: string }) => {
+      setNotification({
+        message: `${data.username} left the game`,
+        type: 'info'
+      });
+    };
+    
+    const handlePlayerReconnected = (data: { playerId: string, username: string }) => {
+      setNotification({
+        message: `${data.username} reconnected to the game`,
+        type: 'success'
+      });
+    };
+
+    socket.on('updateGame', handleUpdateGame);
+    socket.on('playerJoined', handlePlayerJoined);
+    socket.on('playerLeft', handlePlayerLeft);
+    socket.on('playerReconnected', handlePlayerReconnected);
+    
+    return () => {
+      socket.off('updateGame', handleUpdateGame);
+      socket.off('playerJoined', handlePlayerJoined);
+      socket.off('playerLeft', handlePlayerLeft);
+      socket.off('playerReconnected', handlePlayerReconnected);
+    };
+  }, [socket, gameId, showDeathAnimation]);
+
+  // Display notifications
+  useEffect(() => {
+    if (notification) {
+      toast({
+        title: notification.message,
+        status: notification.type,
+        duration: 3000,
+        isClosable: true,
+        position: 'top'
+      });
+      
+      // Clear notification after it's displayed
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [notification, toast]);
 
   // Create a new game
   const createGame = (username: string) => {
-    if (!socket) {
-      console.error('Cannot create game: Socket not connected');
-      setErrorMessage('Not connected to server. Please refresh the page and try again.');
-      setTimeout(() => setErrorMessage(''), 5000);
-      return;
-    }
-    
-    try {
-      console.log('Creating game with username:', username);
-      setUsername(username);
-      socket.emit('createGame', username);
-    } catch (error) {
-      console.error('Error creating game:', error);
-      setErrorMessage('Failed to create game. Please try again.');
-      setTimeout(() => setErrorMessage(''), 5000);
-    }
+    setUsername(username);
+    socket.emit('createGame', username);
   };
 
   // Join an existing game
   const joinGame = (gameId: string, username: string) => {
-    if (!socket) return;
     setUsername(username);
     socket.emit('joinGame', { gameId, username });
   };
 
-  // Start the game
-  const startGame = () => {
-    if (!socket || !gameId) return;
-    socket.emit('startGame', gameId);
-  };
-
-  // End the game
-  const endGame = () => {
-    if (!socket || !gameId) return;
-    socket.emit('endGame', gameId);
-    
-    // Instead of resetting local state completely, just update the game status to 'waiting'
-    // This keeps the user in the game room where they can see the Start Game button
-    if (gameState) {
-      setGameState({
-        ...gameState,
-        status: 'waiting'
-      });
+  // Handle leaving the game
+  const handleExitToLobby = () => {
+    if (gameId) {
+      socket.emit('leaveGame', { gameId });
+      localStorage.removeItem('cardGameSession');
+      setGameId('');
+      setPlayerId('');
+      setSessionId('');
+      setUsername('');
+      setGameState(null);
     }
-  };
-
-  // Select a pile
-  const selectPile = (pileIndex: number) => {
-    if (!socket || !gameId) return;
-    socket.emit('selectPile', { gameId, pileIndex });
-  };
-
-  // Make a prediction
-  const makePrediction = (prediction: Prediction) => {
-    if (!socket || !gameId) return;
-    socket.emit('makePrediction', { gameId, prediction });
-  };
-
-  // Get current player
-  const getCurrentPlayer = (): Player | undefined => {
-    if (!gameState || !playerId) return undefined;
-    return gameState.players.find((player: Player) => player.id === playerId);
   };
 
   // Check if it's the current user's turn
@@ -1252,102 +1256,59 @@ function App() {
     return currentPlayer?.id === playerId;
   };
 
-  // Exit to lobby
-  const exitToLobby = () => {
-    if (socket && gameId) {
-      socket.emit('leaveGame', { gameId });
-      clearSession();
-    }
+  // Get current player
+  const getCurrentPlayer = (): PlayerType | undefined => {
+    if (!gameState || !playerId) return undefined;
+    return gameState.players.find((player: PlayerType) => player.id === playerId);
+  };
+
+  // Start the game
+  const startGame = () => {
+    if (!gameId) return;
+    socket.emit('startGame', gameId);
+  };
+
+  // End the game
+  const endGame = () => {
+    if (!gameId) return;
+    socket.emit('endGame', gameId);
+  };
+
+  // Select a pile
+  const selectPile = (pileIndex: number) => {
+    if (!gameId) return;
+    socket.emit('selectPile', { gameId, pileIndex });
+  };
+
+  // Make a prediction
+  const makePrediction = (prediction: Prediction) => {
+    if (!gameId) return;
+    socket.emit('makePrediction', { gameId, prediction });
   };
 
   return (
-    <Box minH="100vh" bg="gray.50" p={3}>
-      {/* Error message toast */}
-      {errorMessage && (
-        <Box
-          position="fixed"
-          top="20px"
-          left="50%"
-          transform="translateX(-50%)"
-          zIndex="1000"
-          bg="red.500"
-          color="white"
-          p={4}
-          borderRadius="md"
-          boxShadow="lg"
-          maxW="90%"
-          width="400px"
-          textAlign="center"
-        >
-          <Text fontWeight="bold">{errorMessage}</Text>
-        </Box>
-      )}
+    <Container maxW="container.lg" centerContent py={4}>
+      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />}
       
-      {/* Notification toast */}
-      {notification && (
-        <Box
-          position="fixed"
-          top={errorMessage ? "80px" : "20px"}
-          left="50%"
-          transform="translateX(-50%)"
-          zIndex="1000"
-          bg="blue.500"
-          color="white"
-          p={4}
-          borderRadius="md"
-          boxShadow="lg"
-          maxW="90%"
-          width="400px"
-          textAlign="center"
-        >
-          <Text fontWeight="bold">{notification}</Text>
-        </Box>
-      )}
-      
-      {showConfetti && (
-        <Confetti
-          width={windowDimensions.width}
-          height={windowDimensions.height}
-          recycle={true}
-          numberOfPieces={200}
-        />
-      )}
-      
-      {showGameLost && (
-        <Box 
-          position="fixed"
-          top="0"
-          left="0"
-          right="0"
-          bottom="0"
-          bg="rgba(255, 0, 0, 0.3)"
-          zIndex="10"
-          pointerEvents="none"
-          className="game-lost-animation"
-        >
-          <Flex 
-            height="100%" 
-            justifyContent="center" 
-            alignItems="center"
-          >
-            <Text 
-              fontSize="6xl" 
-              fontWeight="bold" 
-              color="white" 
-              textShadow="2px 2px 4px rgba(0,0,0,0.5)"
-              className="game-lost-text"
-            >
-              LOSER! LOCK IN!
-            </Text>
-          </Flex>
-        </Box>
-      )}
-      
-      <Stack direction="column" align="center" style={{ gap: '1.5rem' }}>
-        <Heading as="h1" size="xl" color="teal.500">
-          Kirt's Game
+      <Flex w="100%" justifyContent="space-between" alignItems="center" mb={4}>
+        <Heading as="h1" size="xl" color={useColorModeValue('blue.600', 'blue.300')}>
+          Kirt's Card Game
         </Heading>
-        
+        <IconButton
+          aria-label="Toggle color mode"
+          icon={colorMode === 'light' ? <MoonIcon /> : <SunIcon />}
+          onClick={toggleColorMode}
+          variant="ghost"
+        />
+      </Flex>
+      
+      {errorMessage && (
+        <Box w="100%" p={3} mb={4} bg="red.100" color="red.800" borderRadius="md">
+          {errorMessage}
+        </Box>
+      )}
+      
+      <Box w="100%">
         {!gameState && (
           <HomeScreen 
             createGame={createGame} 
@@ -1363,14 +1324,15 @@ function App() {
             isMyTurn={isMyTurn()}
             startGame={startGame}
             endGame={endGame}
-            exitToLobby={exitToLobby}
+            exitToLobby={handleExitToLobby}
             selectPile={selectPile}
             makePrediction={makePrediction}
             currentPlayer={getCurrentPlayer()}
+            showDeathAnimation={showDeathAnimation}
           />
         )}
-      </Stack>
-    </Box>
+      </Box>
+    </Container>
   );
 }
 
